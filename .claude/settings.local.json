@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git push:*)",
+      "Bash(git config:*)",
+      "Bash(git remote:*)"
+    ],
+    "deny": []
+  }
+}
