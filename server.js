@@ -65,7 +65,7 @@ const userRooms = new Map(); // Track which room each user is in
 
 // Utility functions
 function generateSecureRoomId() {
-  return crypto.randomBytes(8).toString('hex').toUpperCase(); // 16 chars
+  return crypto.randomBytes(3).toString('hex').toUpperCase(); // 6 chars
 }
 
 // Security utilities
@@ -157,7 +157,7 @@ io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id} (IP: ${hashedIP}, connections: ${connections + 1})`);
   
   socket.on('create-room', (data) => {
-    const { playerName, maxPlayers = 8 } = data;
+    const { playerName, maxPlayers = 8, customRoomId } = data;
     
     // Sanitize inputs
     const sanitizedPlayerName = sanitizeInput(playerName, 20);
@@ -179,7 +179,18 @@ io.on('connection', (socket) => {
     recentAttempts.push(now);
     roomCreationAttempts.set(hashedIP, recentAttempts);
     
-    const roomId = generateSecureRoomId();
+    // Handle special rooms or generate random ID
+    let roomId;
+    if (customRoomId && customRoomId.toLowerCase() === 'joesroom') {
+      roomId = 'JOESRM'; // 6-character version of joesroom
+      // Check if this special room already exists
+      if (rooms.has(roomId)) {
+        socket.emit('error', { message: 'Special room already exists. Try joining instead.' });
+        return;
+      }
+    } else {
+      roomId = generateSecureRoomId();
+    }
     
     const room = {
       id: roomId,
@@ -219,12 +230,17 @@ io.on('connection', (socket) => {
     const { roomId, playerName } = data;
     
     // Sanitize inputs
-    const sanitizedRoomId = sanitizeInput(roomId, 20);
+    let sanitizedRoomId = sanitizeInput(roomId, 20);
     const sanitizedPlayerName = sanitizeInput(playerName, 20);
     
     if (!sanitizedRoomId || !sanitizedPlayerName) {
       socket.emit('error', { message: 'Invalid room ID or player name' });
       return;
+    }
+    
+    // Handle special room names
+    if (sanitizedRoomId.toLowerCase() === 'joesroom') {
+      sanitizedRoomId = 'JOESRM';
     }
     
     const room = rooms.get(sanitizedRoomId);
