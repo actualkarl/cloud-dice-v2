@@ -3,7 +3,8 @@ import { useState } from 'react'
 function HomeScreen({ onCreateRoom, onJoinRoom, connectionStatus }) {
   const [createForm, setCreateForm] = useState({
     playerName: '',
-    maxPlayers: 8
+    maxPlayers: 8,
+    createSpecialRoom: false
   })
   
   const [joinForm, setJoinForm] = useState({
@@ -21,7 +22,8 @@ function HomeScreen({ onCreateRoom, onJoinRoom, connectionStatus }) {
       alert('Name must be 20 characters or less')
       return
     }
-    onCreateRoom(createForm.playerName.trim(), createForm.maxPlayers)
+    const customRoomId = createForm.createSpecialRoom ? 'joesroom' : null
+    onCreateRoom(createForm.playerName.trim(), createForm.maxPlayers, customRoomId)
   }
 
   const handleJoinRoom = (e) => {
@@ -38,8 +40,8 @@ function HomeScreen({ onCreateRoom, onJoinRoom, connectionStatus }) {
       alert('Name must be 20 characters or less')
       return
     }
-    if (joinForm.roomId.length !== 6) {
-      alert('Room ID must be 6 characters')
+    if (joinForm.roomId.toLowerCase() !== 'joesroom' && joinForm.roomId.length !== 6) {
+      alert('Room ID must be 6 characters or "joesroom"')
       return
     }
     onJoinRoom(joinForm.roomId.trim(), joinForm.playerName.trim())
@@ -90,6 +92,19 @@ function HomeScreen({ onCreateRoom, onJoinRoom, connectionStatus }) {
               </select>
             </div>
             
+            <div className="form-group">
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={createForm.createSpecialRoom}
+                  onChange={(e) => setCreateForm(prev => ({ ...prev, createSpecialRoom: e.target.checked }))}
+                  style={{ width: 'auto' }}
+                  disabled={isDisabled}
+                />
+                <span>Create special room "joesroom" ✨</span>
+              </label>
+            </div>
+            
             <button 
               type="submit" 
               className="btn btn-primary"
@@ -124,12 +139,21 @@ function HomeScreen({ onCreateRoom, onJoinRoom, connectionStatus }) {
                 id="room-id"
                 type="text"
                 value={joinForm.roomId}
-                onChange={(e) => setJoinForm(prev => ({ ...prev, roomId: e.target.value.toUpperCase() }))}
-                placeholder="6-letter room code"
-                maxLength="6"
-                style={{ textTransform: 'uppercase' }}
+                onChange={(e) => setJoinForm(prev => ({ ...prev, roomId: e.target.value }))}
+                placeholder="6-letter code or 'joesroom'"
+                maxLength="20"
+                style={{ 
+                  textTransform: joinForm.roomId.toLowerCase() === 'joesroom' ? 'none' : 'uppercase',
+                  fontFamily: 'monospace',
+                  letterSpacing: joinForm.roomId.toLowerCase() === 'joesroom' ? '1px' : '2px'
+                }}
                 disabled={isDisabled}
               />
+              {joinForm.roomId.toLowerCase() === 'joesroom' && (
+                <small style={{ color: '#4CAF50', fontSize: '0.8rem', marginTop: '0.25rem', display: 'block' }}>
+                  ✨ Special room detected!
+                </small>
+              )}
             </div>
             
             <button 
