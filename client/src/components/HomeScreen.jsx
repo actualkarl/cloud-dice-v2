@@ -3,8 +3,7 @@ import { useState } from 'react'
 function HomeScreen({ onCreateRoom, onJoinRoom, connectionStatus }) {
   const [createForm, setCreateForm] = useState({
     playerName: '',
-    maxPlayers: 8,
-    createSpecialRoom: false
+    maxPlayers: 8
   })
   
   const [joinForm, setJoinForm] = useState({
@@ -22,8 +21,7 @@ function HomeScreen({ onCreateRoom, onJoinRoom, connectionStatus }) {
       alert('Name must be 20 characters or less')
       return
     }
-    const customRoomId = createForm.createSpecialRoom ? 'joesroom' : null
-    onCreateRoom(createForm.playerName.trim(), createForm.maxPlayers, customRoomId)
+    onCreateRoom(createForm.playerName.trim(), createForm.maxPlayers)
   }
 
   const handleJoinRoom = (e) => {
@@ -93,18 +91,6 @@ function HomeScreen({ onCreateRoom, onJoinRoom, connectionStatus }) {
               </select>
             </div>
             
-            <div className="form-group">
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={createForm.createSpecialRoom}
-                  onChange={(e) => setCreateForm(prev => ({ ...prev, createSpecialRoom: e.target.checked }))}
-                  style={{ width: 'auto' }}
-                  disabled={isDisabled}
-                />
-                <span>Create special room "joesroom" ✨</span>
-              </label>
-            </div>
             
             <button 
               type="submit" 

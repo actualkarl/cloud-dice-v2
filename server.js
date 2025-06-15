@@ -157,7 +157,7 @@ io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id} (IP: ${hashedIP}, connections: ${connections + 1})`);
   
   socket.on('create-room', (data) => {
-    const { playerName, maxPlayers = 8, customRoomId } = data;
+    const { playerName, maxPlayers = 8 } = data;
     
     // Sanitize inputs
     const sanitizedPlayerName = sanitizeInput(playerName, 20);
@@ -179,18 +179,7 @@ io.on('connection', (socket) => {
     recentAttempts.push(now);
     roomCreationAttempts.set(hashedIP, recentAttempts);
     
-    // Handle special rooms or generate random ID
-    let roomId;
-    if (customRoomId && customRoomId.toLowerCase() === 'joesroom') {
-      roomId = 'JOESRM'; // 6-character version of joesroom
-      // Check if this special room already exists
-      if (rooms.has(roomId)) {
-        socket.emit('error', { message: 'Special room already exists. Try joining instead.' });
-        return;
-      }
-    } else {
-      roomId = generateSecureRoomId();
-    }
+    const roomId = generateSecureRoomId();
     
     const room = {
       id: roomId,
@@ -243,7 +232,24 @@ io.on('connection', (socket) => {
       sanitizedRoomId = 'JOESRM';
     }
     
-    const room = rooms.get(sanitizedRoomId);
+    let room = rooms.get(sanitizedRoomId);
+    
+    // Auto-create joesroom if it doesn't exist
+    if (!room && sanitizedRoomId === 'JOESRM') {
+      // Create the special room
+      room = {
+        id: sanitizedRoomId,
+        players: [],
+        maxPlayers: 16, // Set a good default for joe's room
+        isActive: true,
+        createdAt: new Date(),
+        lastActivity: new Date(),
+        rollHistory: [],
+        chatHistory: []
+      };
+      rooms.set(sanitizedRoomId, room);
+      console.log(`Special room created: ${sanitizedRoomId}`);
+    }
     
     if (!room) {
       socket.emit('error', { message: 'Room not found' });
@@ -269,7 +275,7 @@ io.on('connection', (socket) => {
     const player = {
       id: socket.id,
       name: sanitizedPlayerName,
-      isHost: false,
+      isHost: room.players.length === 0, // First player becomes host
       joinedAt: new Date()
     };
     

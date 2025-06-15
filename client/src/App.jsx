@@ -61,7 +61,7 @@ function App() {
     }
   }, [])
 
-  const createRoom = (name, maxPlayers = 8, customRoomId = null) => {
+  const createRoom = (name, maxPlayers = 8) => {
     if (!socket || connectionStatus !== 'connected') {
       alert('Not connected to server')
       return
@@ -69,7 +69,7 @@ function App() {
     
     setPlayerName(name)
     setConnectionStatus('connecting')
-    socket.emit('create-room', { playerName: name, maxPlayers, customRoomId })
+    socket.emit('create-room', { playerName: name, maxPlayers })
   }
 
   const joinRoom = (roomId, name) => {
