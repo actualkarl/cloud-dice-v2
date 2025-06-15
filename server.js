@@ -24,7 +24,7 @@ const io = new Server(server, {
   }
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 
 // Security tracking
 const ipConnections = new Map();
@@ -193,7 +193,8 @@ io.on('connection', (socket) => {
       isActive: true,
       createdAt: new Date(),
       lastActivity: new Date(),
-      rollHistory: []
+      rollHistory: [],
+      chatHistory: []
     };
     
     rooms.set(roomId, room);
@@ -271,7 +272,8 @@ io.on('connection', (socket) => {
         maxPlayers: room.maxPlayers,
         isActive: room.isActive
       },
-      rollHistory: room.rollHistory.slice(-50) // Send last 50 rolls
+      rollHistory: room.rollHistory.slice(-50), // Send last 50 rolls
+      chatHistory: room.chatHistory.slice(-50) // Send last 50 messages
     });
     
     // Notify all other players in the room
@@ -328,10 +330,79 @@ io.on('connection', (socket) => {
       room.rollHistory = room.rollHistory.slice(-100);
     }
     
+    // Also add dice roll to chat history
+    const diceRollChatMessage = {
+      id: `dice-${rollResult.id}`,
+      type: 'dice-roll',
+      player: rollResult.player,
+      rollData: {
+        label: rollResult.label,
+        rolls: rollResult.rolls,
+        total: rollResult.total
+      },
+      timestamp: rollResult.timestamp
+    };
+    
+    room.chatHistory.push(diceRollChatMessage);
+    
+    // Keep only last 100 messages per room
+    if (room.chatHistory.length > 100) {
+      room.chatHistory = room.chatHistory.slice(-100);
+    }
+    
     // Broadcast roll result to all players in the room
     io.to(roomId).emit('dice-rolled', rollResult);
     
     console.log(`${player.name} rolled ${rollResult.label}: ${rolls.join(', ')} (Total: ${total})`);
+  });
+
+  socket.on('send-message', (data) => {
+    const roomId = userRooms.get(socket.id);
+    const room = rooms.get(roomId);
+    
+    if (!room) {
+      socket.emit('error', { message: 'You are not in a room' });
+      return;
+    }
+    
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player) {
+      socket.emit('error', { message: 'Player not found in room' });
+      return;
+    }
+    
+    const { message } = data;
+    
+    // Sanitize chat message
+    const sanitizedMessage = sanitizeInput(message, 200);
+    if (!sanitizedMessage || sanitizedMessage.length === 0) {
+      socket.emit('error', { message: 'Message cannot be empty or contains invalid characters' });
+      return;
+    }
+    
+    const chatMessage = {
+      id: Date.now().toString(),
+      type: 'text',
+      player: {
+        id: player.id,
+        name: player.name
+      },
+      message: sanitizedMessage,
+      timestamp: new Date().toISOString()
+    };
+    
+    room.chatHistory.push(chatMessage);
+    room.lastActivity = new Date();
+    
+    // Keep only last 100 messages
+    if (room.chatHistory.length > 100) {
+      room.chatHistory = room.chatHistory.slice(-100);
+    }
+    
+    // Broadcast message to all players in the room
+    io.to(roomId).emit('chat-message', chatMessage);
+    
+    console.log(`${player.name} sent message: ${sanitizedMessage}`);
   });
   
   socket.on('get-room-info', () => {
@@ -347,7 +418,8 @@ io.on('connection', (socket) => {
           maxPlayers: room.maxPlayers,
           isActive: room.isActive
         },
-        rollHistory: room.rollHistory.slice(-50)
+        rollHistory: room.rollHistory.slice(-50),
+        chatHistory: room.chatHistory.slice(-50)
       });
     }
   });

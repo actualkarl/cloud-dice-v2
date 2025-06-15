@@ -3,7 +3,14 @@
     "allow": [
       "Bash(git push:*)",
       "Bash(git config:*)",
-      "Bash(git remote:*)"
+      "Bash(git remote:*)",
+      "Bash(git cherry-pick:*)",
+      "Bash(tree:*)",
+      "Bash(find:*)",
+      "Bash(rm:*)",
+      "Bash(npm run build:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ],
     "deny": []
   }
