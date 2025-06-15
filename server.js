@@ -230,7 +230,7 @@ io.on('connection', (socket) => {
     const { roomId, playerName } = data;
     
     // Sanitize inputs
-    let sanitizedRoomId = sanitizeInput(roomId, 20);
+    let sanitizedRoomId = sanitizeInput(roomId, 20).toUpperCase();
     const sanitizedPlayerName = sanitizeInput(playerName, 20);
     
     if (!sanitizedRoomId || !sanitizedPlayerName) {
@@ -239,7 +239,7 @@ io.on('connection', (socket) => {
     }
     
     // Handle special room names
-    if (sanitizedRoomId.toLowerCase() === 'joesroom') {
+    if (roomId.toLowerCase() === 'joesroom') {
       sanitizedRoomId = 'JOESRM';
     }
     

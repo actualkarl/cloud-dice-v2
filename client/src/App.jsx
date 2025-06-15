@@ -80,7 +80,7 @@ function App() {
     
     setPlayerName(name)
     setConnectionStatus('connecting')
-    socket.emit('join-room', { roomId: roomId.toUpperCase(), playerName: name })
+    socket.emit('join-room', { roomId: roomId, playerName: name })
   }
 
   const leaveRoom = () => {
