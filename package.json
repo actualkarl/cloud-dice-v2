@@ -1,0 +1,32 @@
+{
+  "name": "cloud-dice-v2",
+  "version": "1.0.0",
+  "description": "Real-time multiplayer dice rolling app optimized for Railway",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"npm run server:dev\" \"npm run client:dev\"",
+    "server:dev": "nodemon server.js",
+    "client:dev": "cd client && npm run dev",
+    "build": "cd client && npm run build",
+    "start": "node server.js",
+    "install:all": "npm install && cd client && npm install",
+    "postinstall": "cd client && npm install && npm run build"
+  },
+  "keywords": ["dice", "multiplayer", "websockets", "railway", "realtime"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.6.1",
+    "dotenv": "^16.0.3",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0",
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
