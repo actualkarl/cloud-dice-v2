@@ -40,8 +40,10 @@ function HomeScreen({ onCreateRoom, onJoinRoom, connectionStatus }) {
       alert('Name must be 20 characters or less')
       return
     }
-    if (joinForm.roomId.toLowerCase() !== 'joesroom' && joinForm.roomId.length !== 6) {
-      alert('Room ID must be 6 characters or "joesroom"')
+    // Allow special room names or 6-character codes
+    const roomIdLower = joinForm.roomId.toLowerCase();
+    if (roomIdLower !== 'joesroom' && joinForm.roomId.length < 6) {
+      alert('Room ID must be at least 6 characters')
       return
     }
     onJoinRoom(joinForm.roomId.trim(), joinForm.playerName.trim())
@@ -139,13 +141,20 @@ function HomeScreen({ onCreateRoom, onJoinRoom, connectionStatus }) {
                 id="room-id"
                 type="text"
                 value={joinForm.roomId}
-                onChange={(e) => setJoinForm(prev => ({ ...prev, roomId: e.target.value }))}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  // Allow lowercase for special rooms, uppercase for regular room codes
+                  if (value.toLowerCase().includes('joesroom') || value.length > 6) {
+                    setJoinForm(prev => ({ ...prev, roomId: value }))
+                  } else {
+                    setJoinForm(prev => ({ ...prev, roomId: value.toUpperCase() }))
+                  }
+                }}
                 placeholder="6-letter code or 'joesroom'"
                 maxLength="20"
                 style={{ 
-                  textTransform: joinForm.roomId.toLowerCase() === 'joesroom' ? 'none' : 'uppercase',
                   fontFamily: 'monospace',
-                  letterSpacing: joinForm.roomId.toLowerCase() === 'joesroom' ? '1px' : '2px'
+                  letterSpacing: '1px'
                 }}
                 disabled={isDisabled}
               />
