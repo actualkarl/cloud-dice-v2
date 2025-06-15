@@ -40,10 +40,9 @@ function HomeScreen({ onCreateRoom, onJoinRoom, connectionStatus }) {
       alert('Name must be 20 characters or less')
       return
     }
-    // Allow special room names or 6-character codes
-    const roomIdLower = joinForm.roomId.toLowerCase();
-    if (roomIdLower !== 'joesroom' && joinForm.roomId.length < 6) {
-      alert('Room ID must be at least 6 characters')
+    // Simple validation - just check if room ID exists
+    if (joinForm.roomId.length < 1) {
+      alert('Please enter a room ID')
       return
     }
     onJoinRoom(joinForm.roomId.trim(), joinForm.playerName.trim())
