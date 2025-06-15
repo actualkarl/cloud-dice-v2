@@ -12,8 +12,13 @@ function App() {
 
   useEffect(() => {
     // Initialize socket connection
-    const newSocket = io(window.location.origin, {
-      transports: ['websocket', 'polling']
+    const serverURL = process.env.NODE_ENV === 'production' 
+      ? window.location.origin 
+      : 'http://localhost:3000';
+    
+    const newSocket = io(serverURL, {
+      transports: ['polling', 'websocket'],
+      forceNew: true
     })
 
     newSocket.on('connect', () => {
@@ -90,11 +95,34 @@ function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>🎲 Cloud Dice V2</h1>
-        <div className={`connection-status ${connectionStatus}`}>
-          {connectionStatus === 'connected' && '🟢 Connected'}
-          {connectionStatus === 'connecting' && '🟡 Connecting...'}
-          {connectionStatus === 'disconnected' && '🔴 Disconnected'}
+        <div className="header-left">
+          <h1>🎲 Cloud Dice V2</h1>
+        </div>
+        <div className="header-right">
+          {gameState === 'room' && currentRoom && (
+            <div className="room-info-compact">
+              <span className="room-name">Room: {currentRoom.id}</span>
+              <span className="player-count">{currentRoom.players.length}/{currentRoom.maxPlayers} players</span>
+            </div>
+          )}
+          {gameState === 'room' && currentRoom && (
+            <div className="room-actions-header">
+              <button onClick={() => {
+                navigator.clipboard.writeText(currentRoom.id)
+                alert('Room ID copied to clipboard!')
+              }} className="btn btn-secondary btn-sm">
+                📋 Copy ID
+              </button>
+              <button onClick={leaveRoom} className="btn btn-primary btn-sm">
+                🚪 Leave
+              </button>
+            </div>
+          )}
+          <div className={`connection-status ${connectionStatus}`}>
+            {connectionStatus === 'connected' && '🟢 Connected'}
+            {connectionStatus === 'connecting' && '🟡 Connecting...'}
+            {connectionStatus === 'disconnected' && '🔴 Disconnected'}
+          </div>
         </div>
       </header>
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 function GameRoom({ socket, room, playerName, onLeaveRoom }) {
   const [diceConfig, setDiceConfig] = useState({
@@ -11,6 +11,9 @@ function GameRoom({ socket, room, playerName, onLeaveRoom }) {
   const [rollResult, setRollResult] = useState(null)
   const [rollHistory, setRollHistory] = useState([])
   const [isRolling, setIsRolling] = useState(false)
+  const [chatHistory, setChatHistory] = useState([])
+  const [chatMessage, setChatMessage] = useState('')
+  const chatMessagesRef = useRef(null)
 
   useEffect(() => {
     if (!socket) return
@@ -19,6 +22,29 @@ function GameRoom({ socket, room, playerName, onLeaveRoom }) {
     socket.on('room-info', (data) => {
       setCurrentRoom(data.room)
       setRollHistory(data.rollHistory || [])
+      setChatHistory(data.chatHistory || [])
+      
+      // Find and set the player's last roll
+      const myLastRoll = (data.rollHistory || [])
+        .filter(roll => roll.player.name === playerName)
+        .pop()
+      if (myLastRoll) {
+        setRollResult(myLastRoll)
+      }
+    })
+
+    socket.on('room-joined', (data) => {
+      setCurrentRoom(data.room)
+      setRollHistory(data.rollHistory || [])
+      setChatHistory(data.chatHistory || [])
+      
+      // Find and set the player's last roll when joining
+      const myLastRoll = (data.rollHistory || [])
+        .filter(roll => roll.player.name === playerName)
+        .pop()
+      if (myLastRoll) {
+        setRollResult(myLastRoll)
+      }
     })
 
     socket.on('player-joined', (data) => {
@@ -46,11 +72,12 @@ function GameRoom({ socket, room, playerName, onLeaveRoom }) {
         setRollResult(data)
         setIsRolling(false)
         
-        // Clear result after 5 seconds
-        setTimeout(() => {
-          setRollResult(null)
-        }, 5000)
+        // Keep the last roll visible - don't clear it automatically
       }
+    })
+
+    socket.on('chat-message', (data) => {
+      setChatHistory(prev => [...prev, data])
     })
 
     // Request current room info
@@ -58,18 +85,27 @@ function GameRoom({ socket, room, playerName, onLeaveRoom }) {
 
     return () => {
       socket.off('room-info')
+      socket.off('room-joined')
       socket.off('player-joined')
       socket.off('player-left')
       socket.off('dice-rolled')
+      socket.off('chat-message')
     }
   }, [socket, playerName])
+
+  // Auto-scroll chat to bottom when new messages arrive
+  useEffect(() => {
+    if (chatMessagesRef.current) {
+      chatMessagesRef.current.scrollTop = chatMessagesRef.current.scrollHeight
+    }
+  }, [chatHistory])
 
   const handleRollDice = (e) => {
     e.preventDefault()
     if (!socket || isRolling) return
 
     setIsRolling(true)
-    setRollResult(null)
+    // Don't clear rollResult - keep the last roll visible
 
     const rollData = {
       sides: diceConfig.sides,
@@ -88,18 +124,27 @@ function GameRoom({ socket, room, playerName, onLeaveRoom }) {
     })
   }
 
-  const copyRoomId = () => {
-    navigator.clipboard.writeText(currentRoom.id)
-    alert('Room ID copied to clipboard!')
+
+  const handleSendMessage = (e) => {
+    e.preventDefault()
+    if (!socket || !chatMessage.trim()) return
+
+    socket.emit('send-message', { message: chatMessage })
+    setChatMessage('')
+  }
+
+  const handleChatKeyPress = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSendMessage(e)
+    }
   }
 
   if (!currentRoom) {
     return (
       <div className="game-room">
-        <div className="room-header">
-          <div className="room-info">
-            <h2>Loading room...</h2>
-          </div>
+        <div className="loading-message">
+          <h2>Loading room...</h2>
         </div>
       </div>
     )
@@ -110,21 +155,6 @@ function GameRoom({ socket, room, playerName, onLeaveRoom }) {
 
   return (
     <div className="game-room">
-      <div className="room-header">
-        <div className="room-info">
-          <h2>Room: {currentRoom.id}</h2>
-          <p>{currentRoom.players.length}/{currentRoom.maxPlayers} players • You are: {playerName}</p>
-        </div>
-        <div className="room-actions">
-          <button onClick={copyRoomId} className="btn btn-secondary">
-            📋 Copy Room ID
-          </button>
-          <button onClick={onLeaveRoom} className="btn btn-primary">
-            🚪 Leave Room
-          </button>
-        </div>
-      </div>
-
       <div className="room-content">
         <div className="dice-section">
           <h3>🎲 Roll Dice</h3>
@@ -188,21 +218,35 @@ function GameRoom({ socket, room, playerName, onLeaveRoom }) {
             </button>
           </form>
 
-          {rollResult && (
-            <div className="dice-results">
-              <h3>Your Roll: {rollResult.label}</h3>
-              <div className="dice-display">
-                {rollResult.rolls.map((roll, index) => (
-                  <div key={index} className="die">
-                    {roll}
+          <div className="dice-results">
+            {rollResult ? (
+              <>
+                <h3>Your Roll: {rollResult.label}</h3>
+                <div className="dice-display">
+                  {rollResult.rolls.map((roll, index) => (
+                    <div key={index} className="die">
+                      {roll}
+                    </div>
+                  ))}
+                </div>
+                <div className="total-display">
+                  Total: {rollResult.total}
+                </div>
+              </>
+            ) : (
+              <>
+                <h3>Your Roll: Ready to roll</h3>
+                <div className="dice-display">
+                  <div className="die placeholder">
+                    ?
                   </div>
-                ))}
-              </div>
-              <div className="total-display">
-                Total: {rollResult.total}
-              </div>
-            </div>
-          )}
+                </div>
+                <div className="total-display">
+                  Total: --
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
         <div className="players-section">
@@ -243,6 +287,76 @@ function GameRoom({ socket, room, playerName, onLeaveRoom }) {
               </div>
             )}
           </div>
+        </div>
+
+        <div className="chat-section" style={{ marginTop: '2rem' }}>
+          <h3>💬 Chat</h3>
+          <div className="chat-messages" ref={chatMessagesRef} style={{ 
+            height: '200px', 
+            overflowY: 'auto', 
+            background: 'rgba(0, 0, 0, 0.2)', 
+            border: '1px solid rgba(255, 255, 255, 0.2)', 
+            borderRadius: '8px', 
+            padding: '1rem',
+            marginBottom: '1rem'
+          }}>
+            {chatHistory.length === 0 ? (
+              <p style={{ opacity: 0.6, fontStyle: 'italic' }}>No messages yet. Start the conversation!</p>
+            ) : (
+              chatHistory.map(message => (
+                <div key={message.id} className={`chat-message ${message.type}`} style={{ marginBottom: '0.75rem' }}>
+                  {message.type === 'dice-roll' ? (
+                    <div className="dice-roll-message">
+                      <div className="message-header" style={{ fontSize: '0.8rem', marginBottom: '0.25rem' }}>
+                        <span className="player-name" style={{ fontWeight: '600', color: '#4CAF50' }}>{message.player.name}</span>
+                        <span className="timestamp" style={{ opacity: '0.6' }}>{formatTimestamp(message.timestamp)}</span>
+                      </div>
+                      <div className="roll-summary" style={{ color: '#81C784' }}>
+                        🎲 {message.rollData.label}: {message.rollData.rolls.join(', ')} = {message.rollData.total}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-message">
+                      <div className="message-header" style={{ fontSize: '0.8rem', marginBottom: '0.25rem' }}>
+                        <span className="player-name" style={{ fontWeight: '600', color: '#2196F3' }}>{message.player.name}</span>
+                        <span className="timestamp" style={{ opacity: '0.6' }}>{formatTimestamp(message.timestamp)}</span>
+                      </div>
+                      <div className="message-content">{message.message}</div>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+          
+          <form onSubmit={handleSendMessage} style={{ display: 'flex', gap: '0.5rem' }}>
+            <input
+              type="text"
+              value={chatMessage}
+              onChange={(e) => setChatMessage(e.target.value)}
+              onKeyPress={handleChatKeyPress}
+              placeholder="Type a message..."
+              maxLength="200"
+              style={{ 
+                flex: 1, 
+                padding: '0.75rem', 
+                borderRadius: '8px', 
+                border: '1px solid rgba(255, 255, 255, 0.2)', 
+                background: 'rgba(255, 255, 255, 0.1)',
+                color: 'white',
+                fontSize: '1rem',
+                outline: 'none'
+              }}
+            />
+            <button 
+              type="submit" 
+              disabled={!chatMessage.trim()}
+              className="btn btn-primary"
+              style={{ minWidth: '80px' }}
+            >
+              Send
+            </button>
+          </form>
         </div>
       </div>
     </div>

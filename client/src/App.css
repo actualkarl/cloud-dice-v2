@@ -29,6 +29,50 @@ body {
   align-items: center;
   backdrop-filter: blur(10px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  min-height: 80px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  flex: 1;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.room-info-compact {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+}
+
+.room-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.player-count {
+  font-size: 0.8rem;
+  opacity: 0.8;
+  margin: 0;
+}
+
+.room-actions-header {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.btn-sm {
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
 }
 
 .app-header h1 {
@@ -63,7 +107,8 @@ body {
   padding: 2rem;
   display: flex;
   justify-content: center;
-  align-items: center;
+  align-items: stretch;
+  min-height: 0;
 }
 
 .app-footer {
@@ -194,9 +239,19 @@ body {
 .game-room {
   max-width: 1200px;
   width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
   gap: 2rem;
+}
+
+.loading-message {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 15px;
+  padding: 2rem;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  text-align: center;
 }
 
 .room-header {
@@ -230,6 +285,8 @@ body {
   display: grid;
   grid-template-columns: 1fr 300px;
   gap: 2rem;
+  height: 100%;
+  align-items: start;
 }
 
 .dice-section {
@@ -280,6 +337,13 @@ body {
   animation: diceRoll 0.5s ease-out;
 }
 
+.die.placeholder {
+  background: rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.7);
+  border: 2px dashed rgba(255, 255, 255, 0.5);
+  animation: none;
+}
+
 @keyframes diceRoll {
   0% { transform: rotateX(0) rotateY(0); }
   50% { transform: rotateX(180deg) rotateY(180deg); }
@@ -298,6 +362,9 @@ body {
   padding: 1.5rem;
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.2);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .players-section h3 {
@@ -337,8 +404,9 @@ body {
 }
 
 .roll-history {
-  max-height: 300px;
+  flex: 1;
   overflow-y: auto;
+  min-height: 0;
 }
 
 .roll-history h4 {
@@ -405,6 +473,28 @@ body {
     flex-direction: column;
     gap: 1rem;
     text-align: center;
+    min-height: auto;
+    padding: 1rem;
+  }
+
+  .header-left {
+    flex-direction: column;
+    gap: 1rem;
+    text-align: center;
+  }
+
+  .header-right {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .room-info-compact {
+    text-align: center;
+    align-items: center;
+  }
+
+  .room-actions-header {
+    justify-content: center;
   }
 
   .app-header h1 {
@@ -463,4 +553,161 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.5);
+}
+
+/* Tab Interface Styling */
+.activity-section {
+  margin-top: 1rem;
+}
+
+.tab-headers {
+  display: flex;
+  gap: 0;
+  margin-bottom: 1rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.tab-button {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border-bottom: 2px solid transparent;
+}
+
+.tab-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.tab-button.active {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  border-bottom-color: #4CAF50;
+  font-weight: 600;
+}
+
+.tab-content {
+  min-height: 300px;
+}
+
+/* Chat Styling */
+.chat-section {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.chat-messages {
+  flex: 1;
+  padding: 0.5rem;
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.chat-message {
+  margin-bottom: 1rem;
+  padding: 0.5rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+}
+
+.chat-message.dice-roll {
+  background: rgba(76, 175, 80, 0.2);
+  border-left: 3px solid #4CAF50;
+}
+
+.chat-message.text {
+  background: rgba(33, 150, 243, 0.2);
+  border-left: 3px solid #2196F3;
+}
+
+.message-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.25rem;
+  font-size: 0.8rem;
+}
+
+.message-header .player-name {
+  font-weight: 600;
+  color: #4CAF50;
+}
+
+.message-header .timestamp {
+  opacity: 0.6;
+  font-size: 0.7rem;
+}
+
+.message-content {
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.roll-summary {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #81C784;
+}
+
+.chat-input-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.chat-input {
+  flex: 1;
+  padding: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  font-size: 0.9rem;
+}
+
+.chat-input::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.chat-input:focus {
+  outline: none;
+  border-color: #4CAF50;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.chat-send-btn {
+  padding: 0.5rem 1rem;
+  background: linear-gradient(45deg, #4CAF50, #45a049);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.chat-send-btn:hover:not(:disabled) {
+  background: linear-gradient(45deg, #45a049, #3d8b40);
+  transform: translateY(-1px);
+}
+
+.chat-send-btn:disabled {
+  background: rgba(255, 255, 255, 0.2);
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Fix for chat input placeholder */
+input[type="text"]::placeholder {
+  color: rgba(255, 255, 255, 0.5);
 }
