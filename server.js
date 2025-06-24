@@ -94,13 +94,31 @@ function rollDice(sides, count) {
   return rolls;
 }
 
-function validateDiceParams(sides, count) {
+function validateDiceParams(sides, count, modifierOp, modifierValue) {
   if (sides < 2 || sides > 100) {
     return { valid: false, error: 'Sides must be between 2 and 100' };
   }
   if (count < 1 || count > 20) {
     return { valid: false, error: 'Count must be between 1 and 20' };
   }
+  
+  // Validate modifier
+  if (modifierOp && modifierOp !== 'none') {
+    if (!['add', 'subtract', 'multiply'].includes(modifierOp)) {
+      return { valid: false, error: 'Invalid modifier operation' };
+    }
+    
+    if (modifierOp === 'multiply') {
+      if (modifierValue < 0.1 || modifierValue > 100) {
+        return { valid: false, error: 'Multiply modifier must be between 0.1 and 100' };
+      }
+    } else {
+      if (modifierValue < -999 || modifierValue > 999) {
+        return { valid: false, error: 'Add/subtract modifier must be between -999 and 999' };
+      }
+    }
+  }
+  
   return { valid: true };
 }
 
@@ -319,16 +337,39 @@ io.on('connection', (socket) => {
       return;
     }
     
-    const { sides = 6, count = 1, label } = data;
+    const { sides = 6, count = 1, label, modifierOp = 'none', modifierValue = 0 } = data;
     
-    const validation = validateDiceParams(sides, count);
+    const validation = validateDiceParams(sides, count, modifierOp, modifierValue);
     if (!validation.valid) {
       socket.emit('error', { message: validation.error });
       return;
     }
     
     const rolls = rollDice(sides, count);
-    const total = rolls.reduce((sum, roll) => sum + roll, 0);
+    const baseTotal = rolls.reduce((sum, roll) => sum + roll, 0);
+    
+    // Calculate modified total
+    let total = baseTotal;
+    if (modifierOp !== 'none') {
+      switch (modifierOp) {
+        case 'add':
+          total = baseTotal + modifierValue;
+          break;
+        case 'subtract':
+          total = baseTotal - modifierValue;
+          break;
+        case 'multiply':
+          total = Math.round(baseTotal * modifierValue);
+          break;
+      }
+    }
+    
+    // Update label to include modifier
+    let displayLabel = label || `${count}d${sides}`;
+    if (modifierOp !== 'none') {
+      const opSymbol = modifierOp === 'add' ? '+' : modifierOp === 'subtract' ? '-' : '×';
+      displayLabel += ` ${opSymbol} ${modifierValue}`;
+    }
     
     const rollResult = {
       id: Date.now().toString(),
@@ -338,9 +379,12 @@ io.on('connection', (socket) => {
       },
       rolls,
       total,
+      baseTotal: modifierOp !== 'none' ? baseTotal : undefined,
       sides,
       count,
-      label: label || `${count}d${sides}`,
+      label: displayLabel,
+      modifierOp,
+      modifierValue: modifierOp !== 'none' ? modifierValue : undefined,
       timestamp: new Date().toISOString()
     };
     
@@ -360,7 +404,10 @@ io.on('connection', (socket) => {
       rollData: {
         label: rollResult.label,
         rolls: rollResult.rolls,
-        total: rollResult.total
+        total: rollResult.total,
+        baseTotal: rollResult.baseTotal,
+        modifierOp: rollResult.modifierOp,
+        modifierValue: rollResult.modifierValue
       },
       timestamp: rollResult.timestamp
     };

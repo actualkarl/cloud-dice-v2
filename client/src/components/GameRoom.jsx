@@ -4,7 +4,9 @@ function GameRoom({ socket, room, playerName, onLeaveRoom }) {
   const [diceConfig, setDiceConfig] = useState({
     sides: 6,
     count: 1,
-    label: ''
+    label: '',
+    modifierOp: 'none',
+    modifierValue: 0
   })
   
   const [currentRoom, setCurrentRoom] = useState(room)
@@ -110,7 +112,9 @@ function GameRoom({ socket, room, playerName, onLeaveRoom }) {
     const rollData = {
       sides: diceConfig.sides,
       count: diceConfig.count,
-      label: diceConfig.label || `${diceConfig.count}d${diceConfig.sides}`
+      label: diceConfig.label || `${diceConfig.count}d${diceConfig.sides}`,
+      modifierOp: diceConfig.modifierOp,
+      modifierValue: diceConfig.modifierValue
     }
 
     socket.emit('roll-dice', rollData)
@@ -206,6 +210,38 @@ function GameRoom({ socket, room, playerName, onLeaveRoom }) {
                   disabled={isRolling}
                 />
               </div>
+
+              <div className="form-group">
+                <label htmlFor="modifier">Modifier</label>
+                <select
+                  id="modifier"
+                  value={diceConfig.modifierOp}
+                  onChange={(e) => setDiceConfig(prev => ({ ...prev, modifierOp: e.target.value }))}
+                  disabled={isRolling}
+                >
+                  <option value="none">None</option>
+                  <option value="add">Add (+)</option>
+                  <option value="subtract">Subtract (-)</option>
+                  <option value="multiply">Multiply (×)</option>
+                </select>
+              </div>
+
+              {diceConfig.modifierOp !== 'none' && (
+                <div className="form-group">
+                  <label htmlFor="modifierValue">Modifier Value</label>
+                  <input
+                    id="modifierValue"
+                    type="number"
+                    value={diceConfig.modifierValue}
+                    onChange={(e) => setDiceConfig(prev => ({ ...prev, modifierValue: parseFloat(e.target.value) || 0 }))}
+                    placeholder="0"
+                    min={diceConfig.modifierOp === 'multiply' ? 0.1 : -999}
+                    max={diceConfig.modifierOp === 'multiply' ? 100 : 999}
+                    step={diceConfig.modifierOp === 'multiply' ? 0.1 : 1}
+                    disabled={isRolling}
+                  />
+                </div>
+              )}
             </div>
 
             <button 
@@ -214,7 +250,11 @@ function GameRoom({ socket, room, playerName, onLeaveRoom }) {
               disabled={isRolling}
               style={{ width: '100%', fontSize: '1.2rem', padding: '1rem' }}
             >
-              {isRolling ? '🎲 Rolling...' : `🎲 Roll ${diceConfig.count}d${diceConfig.sides}`}
+              {isRolling ? '🎲 Rolling...' : `🎲 Roll ${diceConfig.count}d${diceConfig.sides}${
+                diceConfig.modifierOp !== 'none' ? 
+                  ` ${diceConfig.modifierOp === 'add' ? '+' : diceConfig.modifierOp === 'subtract' ? '-' : '×'} ${diceConfig.modifierValue}` : 
+                  ''
+              }`}
             </button>
           </form>
 
@@ -230,7 +270,14 @@ function GameRoom({ socket, room, playerName, onLeaveRoom }) {
                   ))}
                 </div>
                 <div className="total-display">
-                  Total: {rollResult.total}
+                  Total: {rollResult.baseTotal || rollResult.total}
+                  {rollResult.modifierOp && rollResult.modifierOp !== 'none' && (
+                    <div style={{ marginTop: '0.5rem', fontSize: '1.1rem', color: '#4CAF50' }}>
+                      Modified: {rollResult.total} (
+                      {rollResult.modifierOp === 'add' ? '+' : rollResult.modifierOp === 'subtract' ? '-' : '×'}
+                      {rollResult.modifierValue})
+                    </div>
+                  )}
                 </div>
               </>
             ) : (
@@ -280,7 +327,14 @@ function GameRoom({ socket, room, playerName, onLeaveRoom }) {
                           <span key={index} className="mini-die">{die}</span>
                         ))}
                       </div>
-                      <span className="total">= {roll.total}</span>
+                      <span className="total">
+                        = {roll.baseTotal || roll.total}
+                        {roll.modifierOp && roll.modifierOp !== 'none' && (
+                          <span style={{ color: '#4CAF50', marginLeft: '0.5rem' }}>
+                            → {roll.total} ({roll.modifierOp === 'add' ? '+' : roll.modifierOp === 'subtract' ? '-' : '×'}{roll.modifierValue})
+                          </span>
+                        )}
+                      </span>
                     </div>
                   </div>
                 ))}
@@ -312,7 +366,12 @@ function GameRoom({ socket, room, playerName, onLeaveRoom }) {
                         <span className="timestamp" style={{ opacity: '0.6' }}>{formatTimestamp(message.timestamp)}</span>
                       </div>
                       <div className="roll-summary" style={{ color: '#81C784' }}>
-                        🎲 {message.rollData.label}: {message.rollData.rolls.join(', ')} = {message.rollData.total}
+                        🎲 {message.rollData.label}: {message.rollData.rolls.join(', ')} = {message.rollData.baseTotal || message.rollData.total}
+                        {message.rollData.modifierOp && message.rollData.modifierOp !== 'none' && (
+                          <span style={{ color: '#4CAF50' }}>
+                            {' → '}{message.rollData.total} ({message.rollData.modifierOp === 'add' ? '+' : message.rollData.modifierOp === 'subtract' ? '-' : '×'}{message.rollData.modifierValue})
+                          </span>
+                        )}
                       </div>
                     </div>
                   ) : (

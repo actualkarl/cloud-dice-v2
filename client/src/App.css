@@ -299,9 +299,23 @@ body {
 
 .dice-controls {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
   gap: 1rem;
   margin-bottom: 2rem;
+}
+
+.dice-controls .form-group:nth-child(3) {
+  grid-column: span 2;
+}
+
+@media (max-width: 768px) {
+  .dice-controls {
+    grid-template-columns: 1fr;
+  }
+  
+  .dice-controls .form-group:nth-child(3) {
+    grid-column: span 1;
+  }
 }
 
 .dice-results {
