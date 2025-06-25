@@ -120,7 +120,7 @@ function CardHand({ cards, selectedCard, onCardSelect, isReady, onReady, opponen
         <button
           className="btn btn-primary"
           onClick={onReady}
-          disabled={!selectedCard || isReady || !isMyTurn}
+          disabled={selectedCard === null || isReady || !isMyTurn || cards.length === 0}
           style={{
             minWidth: '200px',
             padding: '1rem 2rem',
@@ -142,7 +142,8 @@ function CardHand({ cards, selectedCard, onCardSelect, isReady, onReady, opponen
           )}
           {!isMyTurn && <p style={{ color: '#ff9800' }}>Waiting for your turn...</p>}
           {opponentReady && <p style={{ color: '#4CAF50' }}>Opponent is ready!</p>}
-          {!selectedCard && isMyTurn && <p>Select a card to play</p>}
+          {selectedCard === null && isMyTurn && cards.length > 0 && <p>Select a card to play</p>}
+          {cards.length === 0 && <p style={{ color: '#ff9800' }}>Waiting for card hand...</p>}
           {selectedCard !== null && isReady && cards[selectedCard] && (
             <div style={{ 
               marginTop: '1rem',

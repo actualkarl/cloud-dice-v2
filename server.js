@@ -102,16 +102,32 @@ function generateDeck(gladiatorStats = null) {
 }
 
 function revealCards(room, roomId) {
-  if (!room.gladiatorState) return;
+  console.log(`[DEBUG] revealCards called for room ${roomId}`);
+  
+  if (!room.gladiatorState) {
+    console.log(`[ERROR] No gladiator state in room ${roomId}`);
+    return;
+  }
   
   const fighters = room.players.filter(p => p.role === 'fighter');
-  if (fighters.length !== 2) return;
+  console.log(`[DEBUG] Found ${fighters.length} fighters:`, fighters.map(f => ({ id: f.id, name: f.name })));
+  
+  if (fighters.length !== 2) {
+    console.log(`[ERROR] Expected 2 fighters, found ${fighters.length} in room ${roomId}`);
+    return;
+  }
   
   const [fighter1, fighter2] = fighters;
   const card1 = room.gladiatorState.selectedCards[fighter1.id];
   const card2 = room.gladiatorState.selectedCards[fighter2.id];
   
-  if (!card1 || !card2) return;
+  console.log(`[DEBUG] Selected cards - ${fighter1.name}: ${card1 ? `${card1.value} (${card1.type})` : 'NONE'}, ${fighter2.name}: ${card2 ? `${card2.value} (${card2.type})` : 'NONE'}`);
+  console.log(`[DEBUG] Ready players:`, Array.from(room.gladiatorState.readyPlayers));
+  
+  if (!card1 || !card2) {
+    console.log(`[ERROR] Missing cards - card1: ${!!card1}, card2: ${!!card2}`);
+    return;
+  }
   
   // Determine winner (higher card value wins)
   let roundWinner = null;
@@ -830,25 +846,35 @@ io.on('connection', (socket) => {
     const roomId = userRooms.get(socket.id);
     const room = rooms.get(roomId);
     
+    console.log(`[DEBUG] Player ready request from ${socket.id} in room ${roomId}`);
+    
     if (!room) {
+      console.log(`[ERROR] Player-ready: No room found for ${socket.id}`);
       socket.emit('error', { message: 'You are not in a room' });
       return;
     }
     
     const player = room.players.find(p => p.id === socket.id);
     if (!player) {
+      console.log(`[ERROR] Player-ready: Player ${socket.id} not found in room ${roomId}`);
       socket.emit('error', { message: 'Player not found in room' });
       return;
     }
     
+    console.log(`[DEBUG] Player ${player.name} (${player.id}) trying to be ready, role: ${player.role}`);
+    
     // Only fighters can be ready
     if (player.role !== 'fighter') {
+      console.log(`[ERROR] Player-ready: ${player.name} is not a fighter (role: ${player.role})`);
       socket.emit('error', { message: 'Only fighters can be ready' });
       return;
     }
     
     // Must have selected a card first
     if (!room.gladiatorState || !room.gladiatorState.selectedCards[player.id]) {
+      console.log(`[ERROR] Player-ready: ${player.name} has no selected card`);
+      console.log(`[DEBUG] Gladiator state exists: ${!!room.gladiatorState}`);
+      console.log(`[DEBUG] Selected cards:`, room.gladiatorState?.selectedCards);
       socket.emit('error', { message: 'Must select a card first' });
       return;
     }
@@ -856,6 +882,8 @@ io.on('connection', (socket) => {
     // Add player to ready set
     room.gladiatorState.readyPlayers.add(player.id);
     room.lastActivity = new Date();
+    
+    console.log(`[DEBUG] ${player.name} is now ready. Ready players:`, Array.from(room.gladiatorState.readyPlayers));
     
     // Broadcast ready status (but not card choice)
     io.to(roomId).emit('player-ready-status', { 
@@ -870,11 +898,17 @@ io.on('connection', (socket) => {
     const fighters = room.players.filter(p => p.role === 'fighter');
     const readyFighters = fighters.filter(f => room.gladiatorState.readyPlayers.has(f.id));
     
+    console.log(`[DEBUG] Ready check - Total fighters: ${fighters.length}, Ready fighters: ${readyFighters.length}`);
+    console.log(`[DEBUG] Fighters:`, fighters.map(f => ({ id: f.id, name: f.name, ready: room.gladiatorState.readyPlayers.has(f.id) })));
+    
     if (fighters.length === 2 && readyFighters.length === 2) {
+      console.log(`[DEBUG] Both fighters ready - triggering reveal in 1 second`);
       // Both fighters ready - trigger reveal
       setTimeout(() => {
         revealCards(room, roomId);
       }, 1000); // 1 second delay for dramatic effect
+    } else {
+      console.log(`[DEBUG] Waiting for more fighters to be ready`);
     }
   });
 
@@ -925,6 +959,68 @@ io.on('connection', (socket) => {
     });
     
     console.log(`${player.name} started round ${room.gladiatorState.currentRound} in room ${roomId}`);
+  });
+
+  // Debug commands (host only)
+  socket.on('debug-get-room-state', (data) => {
+    const roomId = userRooms.get(socket.id);
+    const room = rooms.get(roomId);
+    
+    if (!room) {
+      socket.emit('error', { message: 'You are not in a room' });
+      return;
+    }
+    
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player || !player.isHost) {
+      socket.emit('error', { message: 'Debug commands are host-only' });
+      return;
+    }
+    
+    // Send complete room state (with sensitive data for debugging)
+    socket.emit('debug-room-state', {
+      roomId: room.id,
+      players: room.players.map(p => ({
+        id: p.id,
+        name: p.name,
+        role: p.role,
+        isHost: p.isHost,
+        cardHand: p.cardHand ? p.cardHand.map(c => `${c.value} (${c.type})`) : null
+      })),
+      gladiatorState: room.gladiatorState ? {
+        currentRound: room.gladiatorState.currentRound,
+        roundScores: room.gladiatorState.roundScores,
+        selectedCards: Object.fromEntries(
+          Object.entries(room.gladiatorState.selectedCards).map(([playerId, card]) => [
+            playerId, 
+            `${card.value} (${card.type})`
+          ])
+        ),
+        readyPlayers: Array.from(room.gladiatorState.readyPlayers),
+        firstPlayer: room.gladiatorState.firstPlayer,
+        waitingForNextRound: room.gladiatorState.waitingForNextRound
+      } : null,
+      arenaType: room.arenaType
+    });
+  });
+
+  socket.on('debug-force-reveal', (data) => {
+    const roomId = userRooms.get(socket.id);
+    const room = rooms.get(roomId);
+    
+    if (!room) {
+      socket.emit('error', { message: 'You are not in a room' });
+      return;
+    }
+    
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player || !player.isHost) {
+      socket.emit('error', { message: 'Debug commands are host-only' });
+      return;
+    }
+    
+    console.log(`[DEBUG] Host ${player.name} forcing card reveal`);
+    revealCards(room, roomId);
   });
   
   socket.on('disconnect', () => {

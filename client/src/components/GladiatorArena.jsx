@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import CardHand from './CardHand'
+import DebugPanel from './DebugPanel'
 
 function GladiatorArena({ socket, room, playerName, players }) {
   const [playerRole, setPlayerRole] = useState(null) // 'fighter' or 'spectator'
@@ -135,6 +136,12 @@ function GladiatorArena({ socket, room, playerName, players }) {
 
   return (
     <div className="gladiator-arena">
+      <DebugPanel 
+        socket={socket}
+        isHost={isHost}
+        playerName={playerName}
+      />
+      
       <div className="arena-content" style={{
         background: 'rgba(255, 255, 255, 0.1)',
         borderRadius: '15px',
@@ -315,7 +322,7 @@ function GladiatorArena({ socket, room, playerName, players }) {
               isReady={isReady}
               onReady={handleReady}
               opponentReady={opponentReady}
-              isMyTurn={!firstPlayerId || firstPlayerId === currentPlayer?.id || waitingForNextRound}
+              isMyTurn={playerRole === 'fighter' && (!waitingForNextRound) && (cardHand.length > 0)}
               firstPlayerName={firstPlayerId ? players.find(p => p.id === firstPlayerId)?.name : null}
             />
           </div>
