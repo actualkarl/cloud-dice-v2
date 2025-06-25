@@ -96,6 +96,14 @@ function revealCards(room, roomId) {
   if (roundWinner) {
     room.gladiatorState.roundScores[roundWinner.id]++;
   }
+
+  // Set turn order for next round (alternate who goes first)
+  if (!room.gladiatorState.firstPlayer) {
+    room.gladiatorState.firstPlayer = fighter1.id; // Fighter1 goes first in round 1
+  } else {
+    // Alternate: if fighter1 went first last round, fighter2 goes first next round
+    room.gladiatorState.firstPlayer = room.gladiatorState.firstPlayer === fighter1.id ? fighter2.id : fighter1.id;
+  }
   
   // Broadcast reveal results
   io.to(roomId).emit('cards-revealed', {
@@ -108,7 +116,8 @@ function revealCards(room, roomId) {
     roundScores: {
       [fighter1.id]: room.gladiatorState.roundScores[fighter1.id],
       [fighter2.id]: room.gladiatorState.roundScores[fighter2.id]
-    }
+    },
+    nextFirstPlayer: room.gladiatorState.firstPlayer
   });
   
   // Check for match winner (first to 3 wins)
@@ -666,7 +675,9 @@ io.on('connection', (socket) => {
         readyPlayers: new Set(),
         matchWinner: null,
         spectatorBets: {},
-        spectatorChatHistory: []
+        spectatorChatHistory: [],
+        firstPlayer: null, // Will be set when first round starts
+        waitingForNextRound: false
       };
     }
     
@@ -724,7 +735,9 @@ io.on('connection', (socket) => {
         readyPlayers: new Set(),
         matchWinner: null,
         spectatorBets: {},
-        spectatorChatHistory: []
+        spectatorChatHistory: [],
+        firstPlayer: null, // Will be set when first round starts
+        waitingForNextRound: false
       };
     }
     
@@ -815,6 +828,13 @@ io.on('connection', (socket) => {
       socket.emit('error', { message: 'Not waiting for next round' });
       return;
     }
+
+    // Verify we still have exactly 2 fighters
+    const fighters = room.players.filter(p => p.role === 'fighter');
+    if (fighters.length !== 2) {
+      socket.emit('error', { message: 'Need exactly 2 fighters to continue' });
+      return;
+    }
     
     // Advance to next round
     room.gladiatorState.currentRound++;
@@ -825,7 +845,8 @@ io.on('connection', (socket) => {
     
     // Notify all players of next round
     io.to(roomId).emit('next-round', {
-      roundNumber: room.gladiatorState.currentRound
+      roundNumber: room.gladiatorState.currentRound,
+      firstPlayer: room.gladiatorState.firstPlayer
     });
     
     console.log(`${player.name} started round ${room.gladiatorState.currentRound} in room ${roomId}`);

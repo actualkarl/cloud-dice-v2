@@ -10,6 +10,7 @@ function GladiatorArena({ socket, room, playerName, players }) {
   const [roundScores, setRoundScores] = useState({})
   const [lastReveal, setLastReveal] = useState(null)
   const [waitingForNextRound, setWaitingForNextRound] = useState(false)
+  const [firstPlayerId, setFirstPlayerId] = useState(null)
 
   const currentPlayer = players.find(p => p.name === playerName)
   const isHost = currentPlayer?.isHost || false
@@ -42,6 +43,7 @@ function GladiatorArena({ socket, room, playerName, players }) {
       console.log('Cards revealed:', data)
       setLastReveal(data)
       setRoundScores(data.roundScores)
+      setFirstPlayerId(data.nextFirstPlayer)
       // Reset for next round
       setSelectedCard(null)
       setIsReady(false)
@@ -57,6 +59,7 @@ function GladiatorArena({ socket, room, playerName, players }) {
       console.log('Next round:', data)
       setLastReveal(null)
       setWaitingForNextRound(false)
+      setFirstPlayerId(data.firstPlayer)
       // Ready for next round
     })
 
@@ -83,6 +86,8 @@ function GladiatorArena({ socket, room, playerName, players }) {
     if (room?.gladiatorState) {
       setGladiatorState(room.gladiatorState) 
       setRoundScores(room.gladiatorState.roundScores || {})
+      setFirstPlayerId(room.gladiatorState.firstPlayer)
+      setWaitingForNextRound(room.gladiatorState.waitingForNextRound || false)
     }
   }, [room])
 
@@ -298,7 +303,8 @@ function GladiatorArena({ socket, room, playerName, players }) {
               isReady={isReady}
               onReady={handleReady}
               opponentReady={opponentReady}
-              isMyTurn={true} // TODO: Implement turn logic
+              isMyTurn={!firstPlayerId || firstPlayerId === currentPlayer?.id || waitingForNextRound}
+              firstPlayerName={firstPlayerId ? players.find(p => p.id === firstPlayerId)?.name : null}
             />
           </div>
         ) : (

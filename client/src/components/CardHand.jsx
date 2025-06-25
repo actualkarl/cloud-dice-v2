@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-function CardHand({ cards, selectedCard, onCardSelect, isReady, onReady, opponentReady, isMyTurn }) {
+function CardHand({ cards, selectedCard, onCardSelect, isReady, onReady, opponentReady, isMyTurn, firstPlayerName }) {
   const handleCardClick = (cardValue) => {
     if (!isReady && isMyTurn) {
       onCardSelect(cardValue)
@@ -106,6 +106,11 @@ function CardHand({ cards, selectedCard, onCardSelect, isReady, onReady, opponen
           fontSize: '0.9rem',
           opacity: 0.8
         }}>
+          {firstPlayerName && (
+            <p style={{ color: '#2196F3', fontWeight: 'bold', marginBottom: '0.5rem' }}>
+              🎯 {firstPlayerName} goes first this round
+            </p>
+          )}
           {!isMyTurn && <p style={{ color: '#ff9800' }}>Waiting for your turn...</p>}
           {opponentReady && <p style={{ color: '#4CAF50' }}>Opponent is ready!</p>}
           {!selectedCard && isMyTurn && <p>Select a card to play</p>}
