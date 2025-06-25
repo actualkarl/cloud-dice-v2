@@ -11,12 +11,10 @@ function GladiatorArena({ socket, room, playerName, players }) {
   const [lastReveal, setLastReveal] = useState(null)
   const [waitingForNextRound, setWaitingForNextRound] = useState(false)
   const [firstPlayerId, setFirstPlayerId] = useState(null)
+  const [cardHand, setCardHand] = useState([])
 
   const currentPlayer = players.find(p => p.name === playerName)
   const isHost = currentPlayer?.isHost || false
-  
-  // Fighter's hand of cards (1-5)
-  const cardHand = [1, 2, 3, 4, 5]
 
   useEffect(() => {
     if (!socket) return
@@ -25,6 +23,11 @@ function GladiatorArena({ socket, room, playerName, players }) {
     socket.on('player-role-selected', (data) => {
       console.log('Player role selected:', data)
       // Update local state if needed
+    })
+
+    socket.on('card-hand-assigned', (data) => {
+      console.log('Card hand assigned:', data)
+      setCardHand(data.cardHand)
     })
 
     socket.on('card-selected', (data) => {
@@ -60,7 +63,8 @@ function GladiatorArena({ socket, room, playerName, players }) {
       setLastReveal(null)
       setWaitingForNextRound(false)
       setFirstPlayerId(data.firstPlayer)
-      // Ready for next round
+      setSelectedCard(null)
+      // Ready for next round - card hands remain the same
     })
 
     socket.on('match-complete', (data) => {
@@ -72,6 +76,7 @@ function GladiatorArena({ socket, room, playerName, players }) {
 
     return () => {
       socket.off('player-role-selected')
+      socket.off('card-hand-assigned')
       socket.off('card-selected')
       socket.off('player-ready-status')
       socket.off('cards-revealed') 
@@ -98,16 +103,15 @@ function GladiatorArena({ socket, room, playerName, players }) {
     }
   }, [currentPlayer])
   
-  const handleCardSelect = (card) => {
+  const handleCardSelect = (cardIndex) => {
     if (!isReady && playerRole === 'fighter') {
-      setSelectedCard(card)
+      setSelectedCard(cardIndex)
     }
   }
   
   const handleReady = () => {
-    if (selectedCard && !isReady && playerRole === 'fighter') {
+    if (selectedCard !== null && !isReady && playerRole === 'fighter') {
       setIsReady(true)
-      // TODO: Emit socket event for card selection
       if (socket) {
         socket.emit('select-card', { cardIndex: selectedCard })
         socket.emit('player-ready', { playerId: socket.id })
@@ -224,19 +228,27 @@ function GladiatorArena({ socket, room, playerName, players }) {
                   {lastReveal.reveals.map(reveal => (
                     <div key={reveal.playerId} style={{
                       padding: '1rem',
-                      background: 'rgba(255, 255, 255, 0.1)',
+                      background: `linear-gradient(135deg, ${reveal.cardType?.color || '#666'}20, ${reveal.cardType?.color || '#666'}05)`,
                       borderRadius: '10px',
-                      minWidth: '100px'
+                      minWidth: '120px',
+                      border: `2px solid ${reveal.cardType?.color || '#666'}60`
                     }}>
                       <div style={{ fontWeight: 'bold', marginBottom: '0.5rem' }}>
                         {reveal.playerName}
                       </div>
                       <div style={{ 
-                        fontSize: '2rem', 
+                        fontSize: '1rem', 
+                        opacity: 0.8,
+                        marginBottom: '0.5rem'
+                      }}>
+                        {reveal.cardType?.icon} {reveal.cardType?.name}
+                      </div>
+                      <div style={{ 
+                        fontSize: '2.5rem', 
                         fontWeight: 'bold',
                         color: lastReveal.roundWinner?.id === reveal.playerId ? '#4CAF50' : 'inherit'
                       }}>
-                        {reveal.card}
+                        {reveal.card.value}
                       </div>
                     </div>
                   ))}
@@ -358,19 +370,27 @@ function GladiatorArena({ socket, room, playerName, players }) {
                   {lastReveal.reveals.map(reveal => (
                     <div key={reveal.playerId} style={{
                       padding: '1rem',
-                      background: 'rgba(255, 255, 255, 0.1)',
+                      background: `linear-gradient(135deg, ${reveal.cardType?.color || '#666'}20, ${reveal.cardType?.color || '#666'}05)`,
                       borderRadius: '10px',
-                      minWidth: '100px'
+                      minWidth: '120px',
+                      border: `2px solid ${reveal.cardType?.color || '#666'}60`
                     }}>
                       <div style={{ fontWeight: 'bold', marginBottom: '0.5rem' }}>
                         {reveal.playerName}
                       </div>
                       <div style={{ 
-                        fontSize: '2rem', 
+                        fontSize: '1rem', 
+                        opacity: 0.8,
+                        marginBottom: '0.5rem'
+                      }}>
+                        {reveal.cardType?.icon} {reveal.cardType?.name}
+                      </div>
+                      <div style={{ 
+                        fontSize: '2.5rem', 
                         fontWeight: 'bold',
                         color: lastReveal.roundWinner?.id === reveal.playerId ? '#4CAF50' : 'inherit'
                       }}>
-                        {reveal.card}
+                        {reveal.card.value}
                       </div>
                     </div>
                   ))}

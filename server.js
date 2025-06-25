@@ -64,6 +64,43 @@ const rooms = new Map();
 const userRooms = new Map(); // Track which room each user is in
 
 // Gladiator combat helper functions
+const CARD_TYPES = {
+  LIGHT: { name: 'Light', values: [1, 2, 3], icon: '⚡', color: '#4CAF50' },
+  GENERAL: { name: 'General', values: [2, 3, 4], icon: '🛡️', color: '#2196F3' },
+  HEAVY: { name: 'Heavy', values: [3, 4, 5], icon: '💥', color: '#FF5722' }
+};
+
+function getCardType(cardValue) {
+  for (const [typeKey, typeInfo] of Object.entries(CARD_TYPES)) {
+    if (typeInfo.values.includes(cardValue)) {
+      return { key: typeKey, ...typeInfo };
+    }
+  }
+  return null;
+}
+
+function generateDeck(gladiatorStats = null) {
+  // For now, generate a balanced deck
+  // TODO: Later make this dynamic based on gladiator stats
+  const deck = [];
+  
+  // Add 2 cards of each type (6 total, player chooses 5)
+  CARD_TYPES.LIGHT.values.forEach(value => {
+    if (deck.length < 2) deck.push({ value, type: 'LIGHT' });
+  });
+  
+  CARD_TYPES.GENERAL.values.forEach(value => {
+    if (deck.length < 4) deck.push({ value, type: 'GENERAL' });
+  });
+  
+  CARD_TYPES.HEAVY.values.forEach(value => {
+    if (deck.length < 6) deck.push({ value, type: 'HEAVY' });
+  });
+  
+  // Shuffle and return first 5 cards
+  return deck.sort(() => Math.random() - 0.5).slice(0, 5);
+}
+
 function revealCards(room, roomId) {
   if (!room.gladiatorState) return;
   
@@ -76,11 +113,11 @@ function revealCards(room, roomId) {
   
   if (!card1 || !card2) return;
   
-  // Determine winner (higher card wins)
+  // Determine winner (higher card value wins)
   let roundWinner = null;
-  if (card1 > card2) {
+  if (card1.value > card2.value) {
     roundWinner = fighter1;
-  } else if (card2 > card1) {
+  } else if (card2.value > card1.value) {
     roundWinner = fighter2;
   }
   // If tied, no winner for this round
@@ -109,8 +146,18 @@ function revealCards(room, roomId) {
   io.to(roomId).emit('cards-revealed', {
     roundNumber: room.gladiatorState.currentRound,
     reveals: [
-      { playerId: fighter1.id, playerName: fighter1.name, card: card1 },
-      { playerId: fighter2.id, playerName: fighter2.name, card: card2 }
+      { 
+        playerId: fighter1.id, 
+        playerName: fighter1.name, 
+        card: card1,
+        cardType: getCardType(card1.value)
+      },
+      { 
+        playerId: fighter2.id, 
+        playerName: fighter2.name, 
+        card: card2,
+        cardType: getCardType(card2.value)
+      }
     ],
     roundWinner: roundWinner ? { id: roundWinner.id, name: roundWinner.name } : null,
     roundScores: {
@@ -149,7 +196,7 @@ function revealCards(room, roomId) {
     });
   }
   
-  console.log(`Cards revealed in room ${roomId}: ${fighter1.name}(${card1}) vs ${fighter2.name}(${card2}), winner: ${roundWinner?.name || 'tie'}`);
+  console.log(`Cards revealed in room ${roomId}: ${fighter1.name}(${card1.value} ${card1.type}) vs ${fighter2.name}(${card2.value} ${card2.type}), winner: ${roundWinner?.name || 'tie'}`);
 }
 
 // Utility functions
@@ -664,6 +711,15 @@ io.on('connection', (socket) => {
     
     // Update player role
     player.role = role;
+    
+    // Generate deck for fighters
+    if (role === 'fighter') {
+      player.cardHand = generateDeck(player.gladiatorStats);
+    } else {
+      // Remove card hand if switching from fighter to spectator
+      delete player.cardHand;
+    }
+    
     room.lastActivity = new Date();
     
     // Initialize gladiator state if not exists
@@ -681,12 +737,23 @@ io.on('connection', (socket) => {
       };
     }
     
-    // Broadcast role selection to all players
+    // Broadcast role selection to all players (but not card hands - those are private)
     io.to(roomId).emit('player-role-selected', { 
       playerId: player.id, 
       playerName: player.name,
       role: role 
     });
+    
+    // Send card hand privately to the fighter
+    if (role === 'fighter' && player.cardHand) {
+      socket.emit('card-hand-assigned', { 
+        cardHand: player.cardHand.map((card, index) => ({
+          ...card,
+          cardType: getCardType(card.value),
+          index
+        }))
+      });
+    }
     
     console.log(`${player.name} selected role: ${role} in room ${roomId}`);
   });
@@ -720,11 +787,19 @@ io.on('connection', (socket) => {
     
     const { cardIndex } = data;
     
-    // Validate card selection (1-5)
-    if (!Number.isInteger(cardIndex) || cardIndex < 1 || cardIndex > 5) {
+    // Validate card index (0-based for array access)
+    if (!Number.isInteger(cardIndex) || cardIndex < 0 || cardIndex >= 5) {
       socket.emit('error', { message: 'Invalid card selection' });
       return;
     }
+    
+    // Validate player has a card hand
+    if (!player.cardHand || !player.cardHand[cardIndex]) {
+      socket.emit('error', { message: 'No card at that position' });
+      return;
+    }
+    
+    const selectedCard = player.cardHand[cardIndex];
     
     // Initialize gladiator state if not exists
     if (!room.gladiatorState) {
@@ -742,13 +817,13 @@ io.on('connection', (socket) => {
     }
     
     // Store the selected card (secretly)
-    room.gladiatorState.selectedCards[player.id] = cardIndex;
+    room.gladiatorState.selectedCards[player.id] = selectedCard;
     room.lastActivity = new Date();
     
-    console.log(`${player.name} selected card ${cardIndex} in room ${roomId}`);
+    console.log(`${player.name} selected card ${selectedCard.value} (${selectedCard.type}) in room ${roomId}`);
     
     // Confirm selection to the player only (keep secret from others)
-    socket.emit('card-selected', { cardIndex });
+    socket.emit('card-selected', { cardIndex, card: selectedCard });
   });
 
   socket.on('player-ready', (data) => {
