@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
+import ArenaSelector from './ArenaSelector'
+import GladiatorArena from './GladiatorArena'
 
 function GameRoom({ socket, room, playerName, onLeaveRoom }) {
   const [diceConfig, setDiceConfig] = useState({
@@ -10,6 +12,7 @@ function GameRoom({ socket, room, playerName, onLeaveRoom }) {
   })
   
   const [currentRoom, setCurrentRoom] = useState(room)
+  const [arenaType, setArenaType] = useState('dice')
   const [rollResult, setRollResult] = useState(null)
   const [rollHistory, setRollHistory] = useState([])
   const [isRolling, setIsRolling] = useState(false)
@@ -25,6 +28,7 @@ function GameRoom({ socket, room, playerName, onLeaveRoom }) {
       setCurrentRoom(data.room)
       setRollHistory(data.rollHistory || [])
       setChatHistory(data.chatHistory || [])
+      setArenaType(data.room.arenaType || 'dice')
       
       // Find and set the player's last roll
       const myLastRoll = (data.rollHistory || [])
@@ -39,6 +43,7 @@ function GameRoom({ socket, room, playerName, onLeaveRoom }) {
       setCurrentRoom(data.room)
       setRollHistory(data.rollHistory || [])
       setChatHistory(data.chatHistory || [])
+      setArenaType(data.room.arenaType || 'dice')
       
       // Find and set the player's last roll when joining
       const myLastRoll = (data.rollHistory || [])
@@ -82,6 +87,10 @@ function GameRoom({ socket, room, playerName, onLeaveRoom }) {
       setChatHistory(prev => [...prev, data])
     })
 
+    socket.on('arena-switched', (data) => {
+      setArenaType(data.arenaType)
+    })
+
     // Request current room info
     socket.emit('get-room-info')
 
@@ -92,6 +101,7 @@ function GameRoom({ socket, room, playerName, onLeaveRoom }) {
       socket.off('player-left')
       socket.off('dice-rolled')
       socket.off('chat-message')
+      socket.off('arena-switched')
     }
   }, [socket, playerName])
 
@@ -144,6 +154,11 @@ function GameRoom({ socket, room, playerName, onLeaveRoom }) {
     }
   }
 
+  const handleArenaChange = (newArenaType) => {
+    if (!socket) return
+    socket.emit('switch-arena-mode', { arenaType: newArenaType })
+  }
+
   if (!currentRoom) {
     return (
       <div className="game-room">
@@ -156,11 +171,45 @@ function GameRoom({ socket, room, playerName, onLeaveRoom }) {
 
   const currentPlayer = currentRoom.players.find(p => p.name === playerName)
   const isHost = currentPlayer?.isHost || false
+  
+  console.log('GameRoom render - Arena type:', arenaType, 'Is host:', isHost, 'Current player:', currentPlayer)
 
   return (
     <div className="game-room">
+      <div className="room-header" style={{ marginBottom: '2rem' }}>
+        <div className="room-info">
+          <h2>Room: {currentRoom.id}</h2>
+          <p>{currentRoom.players.length}/{currentRoom.maxPlayers} players</p>
+        </div>
+        <div className="room-actions">
+          {/* DEBUG: Arena type: {arenaType}, Is host: {isHost ? 'YES' : 'NO'} */}
+          <div style={{ 
+            padding: '10px', 
+            background: 'red', 
+            color: 'white', 
+            marginRight: '10px',
+            borderRadius: '5px'
+          }}>
+            ARENA: {arenaType} | HOST: {isHost ? 'YES' : 'NO'}
+          </div>
+          <ArenaSelector 
+            currentArena={arenaType}
+            isHost={isHost}
+            onArenaChange={handleArenaChange}
+          />
+          <button 
+            className="btn btn-secondary"
+            onClick={onLeaveRoom}
+            style={{ marginLeft: '1rem' }}
+          >
+            Leave Room
+          </button>
+        </div>
+      </div>
+      
       <div className="room-content">
-        <div className="dice-section">
+        {arenaType === 'dice' ? (
+          <div className="dice-section">
           <h3>🎲 Roll Dice</h3>
           
           <form onSubmit={handleRollDice}>
@@ -295,6 +344,14 @@ function GameRoom({ socket, room, playerName, onLeaveRoom }) {
             )}
           </div>
         </div>
+        ) : (
+          <GladiatorArena 
+            socket={socket}
+            room={currentRoom}
+            playerName={playerName}
+            players={currentRoom.players}
+          />
+        )}
 
         <div className="players-section">
           <h3>👥 Players ({currentRoom.players.length}/{currentRoom.maxPlayers})</h3>

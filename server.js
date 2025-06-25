@@ -63,6 +63,89 @@ app.use(express.static(path.join(__dirname, 'client/dist')));
 const rooms = new Map();
 const userRooms = new Map(); // Track which room each user is in
 
+// Gladiator combat helper functions
+function revealCards(room, roomId) {
+  if (!room.gladiatorState) return;
+  
+  const fighters = room.players.filter(p => p.role === 'fighter');
+  if (fighters.length !== 2) return;
+  
+  const [fighter1, fighter2] = fighters;
+  const card1 = room.gladiatorState.selectedCards[fighter1.id];
+  const card2 = room.gladiatorState.selectedCards[fighter2.id];
+  
+  if (!card1 || !card2) return;
+  
+  // Determine winner (higher card wins)
+  let roundWinner = null;
+  if (card1 > card2) {
+    roundWinner = fighter1;
+  } else if (card2 > card1) {
+    roundWinner = fighter2;
+  }
+  // If tied, no winner for this round
+  
+  // Update round scores
+  if (!room.gladiatorState.roundScores[fighter1.id]) {
+    room.gladiatorState.roundScores[fighter1.id] = 0;
+  }
+  if (!room.gladiatorState.roundScores[fighter2.id]) {
+    room.gladiatorState.roundScores[fighter2.id] = 0;
+  }
+  
+  if (roundWinner) {
+    room.gladiatorState.roundScores[roundWinner.id]++;
+  }
+  
+  // Broadcast reveal results
+  io.to(roomId).emit('cards-revealed', {
+    roundNumber: room.gladiatorState.currentRound,
+    reveals: [
+      { playerId: fighter1.id, playerName: fighter1.name, card: card1 },
+      { playerId: fighter2.id, playerName: fighter2.name, card: card2 }
+    ],
+    roundWinner: roundWinner ? { id: roundWinner.id, name: roundWinner.name } : null,
+    roundScores: {
+      [fighter1.id]: room.gladiatorState.roundScores[fighter1.id],
+      [fighter2.id]: room.gladiatorState.roundScores[fighter2.id]
+    }
+  });
+  
+  // Check for match winner (first to 3 wins)
+  const maxScore = Math.max(
+    room.gladiatorState.roundScores[fighter1.id],
+    room.gladiatorState.roundScores[fighter2.id]
+  );
+  
+  if (maxScore >= 3) {
+    // Match complete
+    const matchWinner = room.gladiatorState.roundScores[fighter1.id] >= 3 ? fighter1 : fighter2;
+    room.gladiatorState.matchWinner = matchWinner.id;
+    
+    io.to(roomId).emit('match-complete', {
+      winner: { id: matchWinner.id, name: matchWinner.name },
+      finalScores: {
+        [fighter1.id]: room.gladiatorState.roundScores[fighter1.id],
+        [fighter2.id]: room.gladiatorState.roundScores[fighter2.id]
+      }
+    });
+  } else {
+    // Prepare for next round
+    room.gladiatorState.currentRound++;
+    room.gladiatorState.selectedCards = {};
+    room.gladiatorState.readyPlayers.clear();
+    
+    // Notify players of next round
+    setTimeout(() => {
+      io.to(roomId).emit('next-round', {
+        roundNumber: room.gladiatorState.currentRound
+      });
+    }, 3000); // 3 second delay before next round
+  }
+  
+  console.log(`Cards revealed in room ${roomId}: ${fighter1.name}(${card1}) vs ${fighter2.name}(${card2}), winner: ${roundWinner?.name || 'tie'}`);
+}
+
 // Utility functions
 function generateSecureRoomId() {
   return crypto.randomBytes(3).toString('hex').toUpperCase(); // 6 chars
@@ -212,7 +295,8 @@ io.on('connection', (socket) => {
       createdAt: new Date(),
       lastActivity: new Date(),
       rollHistory: [],
-      chatHistory: []
+      chatHistory: [],
+      arenaType: 'dice' // Default to dice mode
     };
     
     rooms.set(roomId, room);
@@ -226,7 +310,9 @@ io.on('connection', (socket) => {
         id: room.id,
         players: room.players,
         maxPlayers: room.maxPlayers,
-        isActive: room.isActive
+        isActive: room.isActive,
+        arenaType: room.arenaType,
+        gladiatorState: room.gladiatorState
       }
     });
     
@@ -263,7 +349,8 @@ io.on('connection', (socket) => {
         createdAt: new Date(),
         lastActivity: new Date(),
         rollHistory: [],
-        chatHistory: []
+        chatHistory: [],
+        arenaType: 'dice' // Default to dice mode
       };
       rooms.set(sanitizedRoomId, room);
       console.log(`Special room created: ${sanitizedRoomId}`);
@@ -310,7 +397,9 @@ io.on('connection', (socket) => {
         id: room.id,
         players: room.players,
         maxPlayers: room.maxPlayers,
-        isActive: room.isActive
+        isActive: room.isActive,
+        arenaType: room.arenaType,
+        gladiatorState: room.gladiatorState
       },
       rollHistory: room.rollHistory.slice(-50), // Send last 50 rolls
       chatHistory: room.chatHistory.slice(-50) // Send last 50 messages
@@ -474,6 +563,45 @@ io.on('connection', (socket) => {
     console.log(`${player.name} sent message: ${sanitizedMessage}`);
   });
   
+  socket.on('switch-arena-mode', (data) => {
+    const roomId = userRooms.get(socket.id);
+    const room = rooms.get(roomId);
+    
+    if (!room) {
+      socket.emit('error', { message: 'You are not in a room' });
+      return;
+    }
+    
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player) {
+      socket.emit('error', { message: 'Player not found in room' });
+      return;
+    }
+    
+    // Only host can switch arena mode
+    if (!player.isHost) {
+      socket.emit('error', { message: 'Only the host can switch arena mode' });
+      return;
+    }
+    
+    const { arenaType } = data;
+    
+    // Validate arena type
+    if (!['dice', 'gladiator'].includes(arenaType)) {
+      socket.emit('error', { message: 'Invalid arena type' });
+      return;
+    }
+    
+    // Update room arena type
+    room.arenaType = arenaType;
+    room.lastActivity = new Date();
+    
+    // Broadcast arena change to all players in the room
+    io.to(roomId).emit('arena-switched', { arenaType });
+    
+    console.log(`${player.name} switched arena to: ${arenaType} in room ${roomId}`);
+  });
+  
   socket.on('get-room-info', () => {
     const roomId = userRooms.get(socket.id);
     const room = rooms.get(roomId);
@@ -485,11 +613,183 @@ io.on('connection', (socket) => {
           id: room.id,
           players: room.players,
           maxPlayers: room.maxPlayers,
-          isActive: room.isActive
+          isActive: room.isActive,
+          arenaType: room.arenaType,
+          gladiatorState: room.gladiatorState
         },
         rollHistory: room.rollHistory.slice(-50),
         chatHistory: room.chatHistory.slice(-50)
       });
+    }
+  });
+
+  // Gladiator Arena Socket Events
+  socket.on('select-role', (data) => {
+    const roomId = userRooms.get(socket.id);
+    const room = rooms.get(roomId);
+    
+    if (!room) {
+      socket.emit('error', { message: 'You are not in a room' });
+      return;
+    }
+    
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player) {
+      socket.emit('error', { message: 'Player not found in room' });
+      return;
+    }
+    
+    const { role } = data;
+    
+    // Validate role
+    if (!['fighter', 'spectator'].includes(role)) {
+      socket.emit('error', { message: 'Invalid role selection' });
+      return;
+    }
+    
+    // Check if trying to select fighter when already 2 fighters
+    if (role === 'fighter') {
+      const currentFighters = room.players.filter(p => p.role === 'fighter').length;
+      if (currentFighters >= 2 && player.role !== 'fighter') {
+        socket.emit('error', { message: 'Maximum 2 fighters allowed' });
+        return;
+      }
+    }
+    
+    // Update player role
+    player.role = role;
+    room.lastActivity = new Date();
+    
+    // Initialize gladiator state if not exists
+    if (!room.gladiatorState) {
+      room.gladiatorState = {
+        currentRound: 1,
+        roundScores: {},
+        selectedCards: {},
+        readyPlayers: new Set(),
+        matchWinner: null,
+        spectatorBets: {},
+        spectatorChatHistory: []
+      };
+    }
+    
+    // Broadcast role selection to all players
+    io.to(roomId).emit('player-role-selected', { 
+      playerId: player.id, 
+      playerName: player.name,
+      role: role 
+    });
+    
+    console.log(`${player.name} selected role: ${role} in room ${roomId}`);
+  });
+
+  socket.on('select-card', (data) => {
+    const roomId = userRooms.get(socket.id);
+    const room = rooms.get(roomId);
+    
+    if (!room) {
+      socket.emit('error', { message: 'You are not in a room' });
+      return;
+    }
+    
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player) {
+      socket.emit('error', { message: 'Player not found in room' });
+      return;
+    }
+    
+    // Only fighters can select cards
+    if (player.role !== 'fighter') {
+      socket.emit('error', { message: 'Only fighters can select cards' });
+      return;
+    }
+    
+    // Must be in gladiator mode
+    if (room.arenaType !== 'gladiator') {
+      socket.emit('error', { message: 'Not in gladiator mode' });
+      return;
+    }
+    
+    const { cardIndex } = data;
+    
+    // Validate card selection (1-5)
+    if (!Number.isInteger(cardIndex) || cardIndex < 1 || cardIndex > 5) {
+      socket.emit('error', { message: 'Invalid card selection' });
+      return;
+    }
+    
+    // Initialize gladiator state if not exists
+    if (!room.gladiatorState) {
+      room.gladiatorState = {
+        currentRound: 1,
+        roundScores: {},
+        selectedCards: {},
+        readyPlayers: new Set(),
+        matchWinner: null,
+        spectatorBets: {},
+        spectatorChatHistory: []
+      };
+    }
+    
+    // Store the selected card (secretly)
+    room.gladiatorState.selectedCards[player.id] = cardIndex;
+    room.lastActivity = new Date();
+    
+    console.log(`${player.name} selected card ${cardIndex} in room ${roomId}`);
+    
+    // Confirm selection to the player only (keep secret from others)
+    socket.emit('card-selected', { cardIndex });
+  });
+
+  socket.on('player-ready', (data) => {
+    const roomId = userRooms.get(socket.id);
+    const room = rooms.get(roomId);
+    
+    if (!room) {
+      socket.emit('error', { message: 'You are not in a room' });
+      return;
+    }
+    
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player) {
+      socket.emit('error', { message: 'Player not found in room' });
+      return;
+    }
+    
+    // Only fighters can be ready
+    if (player.role !== 'fighter') {
+      socket.emit('error', { message: 'Only fighters can be ready' });
+      return;
+    }
+    
+    // Must have selected a card first
+    if (!room.gladiatorState || !room.gladiatorState.selectedCards[player.id]) {
+      socket.emit('error', { message: 'Must select a card first' });
+      return;
+    }
+    
+    // Add player to ready set
+    room.gladiatorState.readyPlayers.add(player.id);
+    room.lastActivity = new Date();
+    
+    // Broadcast ready status (but not card choice)
+    io.to(roomId).emit('player-ready-status', { 
+      playerId: player.id,
+      playerName: player.name,
+      isReady: true
+    });
+    
+    console.log(`${player.name} is ready in room ${roomId}`);
+    
+    // Check if both fighters are ready
+    const fighters = room.players.filter(p => p.role === 'fighter');
+    const readyFighters = fighters.filter(f => room.gladiatorState.readyPlayers.has(f.id));
+    
+    if (fighters.length === 2 && readyFighters.length === 2) {
+      // Both fighters ready - trigger reveal
+      setTimeout(() => {
+        revealCards(room, roomId);
+      }, 1000); // 1 second delay for dramatic effect
     }
   });
   

@@ -14,7 +14,14 @@
       "Bash(npm run dev:*)",
       "Bash(ls)",
       "Bash(grep:*)",
-      "Bash(npm start)"
+      "Bash(npm start)",
+      "Bash(curl:*)",
+      "Bash(pkill:*)",
+      "Bash(true)",
+      "Bash(rg:*)",
+      "mcp__puppeteer__puppeteer_navigate",
+      "Bash(node:*)",
+      "Bash(netsh.exe interface portproxy add v4tov4:*)"
     ],
     "deny": []
   }

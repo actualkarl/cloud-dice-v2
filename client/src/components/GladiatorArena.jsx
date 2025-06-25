@@ -1,0 +1,287 @@
+import { useState, useEffect } from 'react'
+import CardHand from './CardHand'
+
+function GladiatorArena({ socket, room, playerName, players }) {
+  const [playerRole, setPlayerRole] = useState(null) // 'fighter' or 'spectator'
+  const [selectedCard, setSelectedCard] = useState(null)
+  const [isReady, setIsReady] = useState(false)
+  const [opponentReady, setOpponentReady] = useState(false)
+  const [gladiatorState, setGladiatorState] = useState(null)
+  const [roundScores, setRoundScores] = useState({})
+  const [lastReveal, setLastReveal] = useState(null)
+
+  const currentPlayer = players.find(p => p.name === playerName)
+  const isHost = currentPlayer?.isHost || false
+  
+  // Fighter's hand of cards (1-5)
+  const cardHand = [1, 2, 3, 4, 5]
+
+  useEffect(() => {
+    if (!socket) return
+
+    // Listen for gladiator events
+    socket.on('player-role-selected', (data) => {
+      console.log('Player role selected:', data)
+      // Update local state if needed
+    })
+
+    socket.on('card-selected', (data) => {
+      console.log('Card selection confirmed:', data)
+      // Card selection confirmed - no need to update state, already handled locally
+    })
+
+    socket.on('player-ready-status', (data) => {
+      console.log('Player ready status:', data)
+      if (data.playerName !== playerName) {
+        setOpponentReady(data.isReady)
+      }
+    })
+
+    socket.on('cards-revealed', (data) => {
+      console.log('Cards revealed:', data)
+      setLastReveal(data)
+      setRoundScores(data.roundScores)
+      // Reset for next round
+      setSelectedCard(null)
+      setIsReady(false)
+      setOpponentReady(false)
+    })
+
+    socket.on('next-round', (data) => {
+      console.log('Next round:', data)
+      setLastReveal(null)
+      // Ready for next round
+    })
+
+    socket.on('match-complete', (data) => {
+      console.log('Match complete:', data)
+      setLastReveal(null)
+      // Match is over - could show final results
+    })
+
+    return () => {
+      socket.off('player-role-selected')
+      socket.off('card-selected')
+      socket.off('player-ready-status')
+      socket.off('cards-revealed') 
+      socket.off('next-round')
+      socket.off('match-complete')
+    }
+  }, [socket, playerName])
+
+  // Initialize gladiator state from room
+  useEffect(() => {
+    if (room?.gladiatorState) {
+      setGladiatorState(room.gladiatorState) 
+      setRoundScores(room.gladiatorState.roundScores || {})
+    }
+  }, [room])
+
+  // Set player role from room data
+  useEffect(() => {
+    if (currentPlayer?.role) {
+      setPlayerRole(currentPlayer.role)
+    }
+  }, [currentPlayer])
+  
+  const handleCardSelect = (card) => {
+    if (!isReady && playerRole === 'fighter') {
+      setSelectedCard(card)
+    }
+  }
+  
+  const handleReady = () => {
+    if (selectedCard && !isReady && playerRole === 'fighter') {
+      setIsReady(true)
+      // TODO: Emit socket event for card selection
+      if (socket) {
+        socket.emit('select-card', { cardIndex: selectedCard })
+        socket.emit('player-ready', { playerId: socket.id })
+      }
+    }
+  }
+  
+  const handleRoleSelect = (role) => {
+    setPlayerRole(role)
+    // TODO: Emit socket event for role selection
+    if (socket) {
+      socket.emit('select-role', { role })
+    }
+  }
+
+  return (
+    <div className="gladiator-arena">
+      <div className="arena-content" style={{
+        background: 'rgba(255, 255, 255, 0.1)',
+        borderRadius: '15px',
+        padding: '2rem',
+        backdropFilter: 'blur(10px)',
+        border: '1px solid rgba(255, 255, 255, 0.2)',
+        textAlign: 'center'
+      }}>
+        <h2 style={{ marginBottom: '2rem', fontSize: '2rem' }}>⚔️ Gladiator Arena</h2>
+        
+        {!playerRole ? (
+          // Role selection interface
+          <div className="role-selection" style={{ 
+          marginTop: '3rem',
+          padding: '2rem',
+          background: 'rgba(0, 0, 0, 0.2)',
+          borderRadius: '10px'
+        }}>
+          <h3 style={{ marginBottom: '1.5rem' }}>Select Your Role</h3>
+          
+          <div style={{ 
+            display: 'flex', 
+            gap: '2rem', 
+            justifyContent: 'center',
+            flexWrap: 'wrap'
+          }}>
+            <button 
+              className="btn btn-primary"
+              style={{ 
+                minWidth: '150px',
+                padding: '1rem 2rem',
+                fontSize: '1.1rem'
+              }}
+              onClick={() => handleRoleSelect('fighter')}
+            >
+              ⚔️ Fighter
+            </button>
+            
+            <button 
+              className="btn btn-secondary"
+              style={{ 
+                minWidth: '150px',
+                padding: '1rem 2rem',
+                fontSize: '1.1rem'
+              }}
+              onClick={() => handleRoleSelect('spectator')}
+            >
+              👁️ Spectator
+            </button>
+          </div>
+        </div>
+        ) : playerRole === 'fighter' ? (
+          // Fighter interface with card hand
+          <div className="fighter-interface">
+            {/* Round scores display */}
+            {Object.keys(roundScores).length > 0 && (
+              <div className="round-scores" style={{
+                marginBottom: '2rem',
+                padding: '1rem',
+                background: 'rgba(0, 0, 0, 0.3)',
+                borderRadius: '10px',
+                textAlign: 'center'
+              }}>
+                <h4 style={{ marginBottom: '1rem' }}>Round Scores</h4>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '2rem' }}>
+                  {players.filter(p => p.role === 'fighter').map(fighter => (
+                    <div key={fighter.id} style={{
+                      padding: '0.5rem 1rem', 
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      borderRadius: '5px'
+                    }}>
+                      <strong>{fighter.name}</strong>: {roundScores[fighter.id] || 0} wins
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Last round reveal display */}
+            {lastReveal && (
+              <div className="last-reveal" style={{
+                marginBottom: '2rem',
+                padding: '1.5rem',
+                background: 'rgba(76, 175, 80, 0.2)',
+                borderRadius: '10px',
+                textAlign: 'center',
+                border: '2px solid rgba(76, 175, 80, 0.5)'
+              }}>
+                <h4 style={{ marginBottom: '1rem' }}>Round {lastReveal.roundNumber} Results</h4>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '2rem', marginBottom: '1rem' }}>
+                  {lastReveal.reveals.map(reveal => (
+                    <div key={reveal.playerId} style={{
+                      padding: '1rem',
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      borderRadius: '10px',
+                      minWidth: '100px'
+                    }}>
+                      <div style={{ fontWeight: 'bold', marginBottom: '0.5rem' }}>
+                        {reveal.playerName}
+                      </div>
+                      <div style={{ 
+                        fontSize: '2rem', 
+                        fontWeight: 'bold',
+                        color: lastReveal.roundWinner?.id === reveal.playerId ? '#4CAF50' : 'inherit'
+                      }}>
+                        {reveal.card}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {lastReveal.roundWinner ? (
+                  <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#4CAF50' }}>
+                    🏆 {lastReveal.roundWinner.name} wins this round!
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '1.2rem', opacity: 0.8 }}>
+                    ⚖️ Round tied!
+                  </div>
+                )}
+              </div>
+            )}
+
+            <CardHand
+              cards={cardHand}
+              selectedCard={selectedCard}
+              onCardSelect={handleCardSelect}
+              isReady={isReady}
+              onReady={handleReady}
+              opponentReady={opponentReady}
+              isMyTurn={true} // TODO: Implement turn logic
+            />
+          </div>
+        ) : (
+          // Spectator interface
+          <div className="spectator-interface" style={{
+            padding: '2rem',
+            background: 'rgba(0, 0, 0, 0.2)',
+            borderRadius: '10px',
+            marginTop: '2rem'
+          }}>
+            <h3 style={{ marginBottom: '1.5rem', textAlign: 'center' }}>
+              👁️ Spectator Mode
+            </h3>
+            <p style={{ fontSize: '1rem', opacity: 0.8, textAlign: 'center' }}>
+              You are watching the battle. Chat and betting features coming soon!
+            </p>
+            
+            <div style={{ 
+              marginTop: '2rem',
+              padding: '1rem',
+              background: 'rgba(255, 255, 255, 0.05)',
+              borderRadius: '8px',
+              textAlign: 'center'
+            }}>
+              <p style={{ fontSize: '0.9rem', opacity: 0.6 }}>
+                Waiting for fighters to make their moves...
+              </p>
+            </div>
+          </div>
+        )}
+
+        <div className="players-info" style={{ 
+          marginTop: '2rem',
+          fontSize: '0.9rem',
+          opacity: 0.7
+        }}>
+          <p>Players in arena: {players.length}</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default GladiatorArena
