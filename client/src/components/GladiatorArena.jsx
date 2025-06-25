@@ -312,21 +312,137 @@ function GladiatorArena({ socket, room, playerName, players }) {
             <h3 style={{ marginBottom: '1.5rem', textAlign: 'center' }}>
               👁️ Spectator Mode
             </h3>
-            <p style={{ fontSize: '1rem', opacity: 0.8, textAlign: 'center' }}>
-              You are watching the battle. Chat and betting features coming soon!
-            </p>
-            
-            <div style={{ 
-              marginTop: '2rem',
-              padding: '1rem',
-              background: 'rgba(255, 255, 255, 0.05)',
-              borderRadius: '8px',
-              textAlign: 'center'
-            }}>
-              <p style={{ fontSize: '0.9rem', opacity: 0.6 }}>
-                Waiting for fighters to make their moves...
-              </p>
-            </div>
+
+            {/* Round scores display for spectators */}
+            {Object.keys(roundScores).length > 0 && (
+              <div className="round-scores" style={{
+                marginBottom: '2rem',
+                padding: '1rem',
+                background: 'rgba(0, 0, 0, 0.3)',
+                borderRadius: '10px',
+                textAlign: 'center'
+              }}>
+                <h4 style={{ marginBottom: '1rem' }}>Round Scores</h4>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '2rem' }}>
+                  {players.filter(p => p.role === 'fighter').map(fighter => (
+                    <div key={fighter.id} style={{
+                      padding: '0.5rem 1rem', 
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      borderRadius: '5px'
+                    }}>
+                      <strong>{fighter.name}</strong>: {roundScores[fighter.id] || 0} wins
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Last round reveal display for spectators */}
+            {lastReveal && (
+              <div className="last-reveal" style={{
+                marginBottom: '2rem',
+                padding: '1.5rem',
+                background: 'rgba(76, 175, 80, 0.2)',
+                borderRadius: '10px',
+                textAlign: 'center',
+                border: '2px solid rgba(76, 175, 80, 0.5)'
+              }}>
+                <h4 style={{ marginBottom: '1rem' }}>Round {lastReveal.roundNumber} Results</h4>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '2rem', marginBottom: '1rem' }}>
+                  {lastReveal.reveals.map(reveal => (
+                    <div key={reveal.playerId} style={{
+                      padding: '1rem',
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      borderRadius: '10px',
+                      minWidth: '100px'
+                    }}>
+                      <div style={{ fontWeight: 'bold', marginBottom: '0.5rem' }}>
+                        {reveal.playerName}
+                      </div>
+                      <div style={{ 
+                        fontSize: '2rem', 
+                        fontWeight: 'bold',
+                        color: lastReveal.roundWinner?.id === reveal.playerId ? '#4CAF50' : 'inherit'
+                      }}>
+                        {reveal.card}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {lastReveal.roundWinner ? (
+                  <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#4CAF50' }}>
+                    🏆 {lastReveal.roundWinner.name} wins this round!
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '1.2rem', opacity: 0.8 }}>
+                    ⚖️ Round tied!
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Next Round button for spectator host */}
+            {waitingForNextRound && isHost && (
+              <div style={{
+                marginBottom: '2rem',
+                textAlign: 'center',
+                padding: '1.5rem',
+                background: 'rgba(33, 150, 243, 0.2)',
+                borderRadius: '10px',
+                border: '2px solid rgba(33, 150, 243, 0.5)'
+              }}>
+                <p style={{ marginBottom: '1rem', fontSize: '1.1rem' }}>
+                  Round complete! Ready for the next round?
+                </p>
+                <button 
+                  className="btn btn-primary"
+                  onClick={handleStartNextRound}
+                  style={{
+                    fontSize: '1.2rem',
+                    padding: '1rem 2rem',
+                    minWidth: '200px'
+                  }}
+                >
+                  ▶️ Start Next Round
+                </button>
+              </div>
+            )}
+
+            {/* Waiting message for non-host spectators */}
+            {waitingForNextRound && !isHost && (
+              <div style={{
+                marginBottom: '2rem',
+                textAlign: 'center',
+                padding: '1.5rem',
+                background: 'rgba(255, 152, 0, 0.2)',
+                borderRadius: '10px',
+                border: '2px solid rgba(255, 152, 0, 0.5)'
+              }}>
+                <p style={{ fontSize: '1.1rem', color: '#ff9800' }}>
+                  ⏳ Waiting for host to start the next round...
+                </p>
+              </div>
+            )}
+
+            {!waitingForNextRound && !lastReveal && (
+              <>
+                <p style={{ fontSize: '1rem', opacity: 0.8, textAlign: 'center' }}>
+                  You are watching the battle. Chat and betting features coming soon!
+                </p>
+                
+                <div style={{ 
+                  marginTop: '2rem',
+                  padding: '1rem',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  borderRadius: '8px',
+                  textAlign: 'center'
+                }}>
+                  <p style={{ fontSize: '0.9rem', opacity: 0.6 }}>
+                    Waiting for fighters to make their moves...
+                  </p>
+                </div>
+              </>
+            )}
           </div>
         )}
 
