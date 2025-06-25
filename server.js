@@ -130,17 +130,14 @@ function revealCards(room, roomId) {
       }
     });
   } else {
-    // Prepare for next round
-    room.gladiatorState.currentRound++;
-    room.gladiatorState.selectedCards = {};
-    room.gladiatorState.readyPlayers.clear();
+    // Round complete but match continues - wait for manual next round
+    room.gladiatorState.waitingForNextRound = true;
     
-    // Notify players of next round
-    setTimeout(() => {
-      io.to(roomId).emit('next-round', {
-        roundNumber: room.gladiatorState.currentRound
-      });
-    }, 3000); // 3 second delay before next round
+    // Notify players that round is complete and waiting
+    io.to(roomId).emit('round-complete-waiting', {
+      roundNumber: room.gladiatorState.currentRound,
+      nextRoundNumber: room.gladiatorState.currentRound + 1
+    });
   }
   
   console.log(`Cards revealed in room ${roomId}: ${fighter1.name}(${card1}) vs ${fighter2.name}(${card2}), winner: ${roundWinner?.name || 'tie'}`);
@@ -791,6 +788,47 @@ io.on('connection', (socket) => {
         revealCards(room, roomId);
       }, 1000); // 1 second delay for dramatic effect
     }
+  });
+
+  socket.on('start-next-round', (data) => {
+    const roomId = userRooms.get(socket.id);
+    const room = rooms.get(roomId);
+    
+    if (!room) {
+      socket.emit('error', { message: 'You are not in a room' });
+      return;
+    }
+    
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player) {
+      socket.emit('error', { message: 'Player not found in room' });
+      return;
+    }
+    
+    // Only host can start next round (for testing)
+    if (!player.isHost) {
+      socket.emit('error', { message: 'Only the host can start the next round' });
+      return;
+    }
+    
+    if (!room.gladiatorState || !room.gladiatorState.waitingForNextRound) {
+      socket.emit('error', { message: 'Not waiting for next round' });
+      return;
+    }
+    
+    // Advance to next round
+    room.gladiatorState.currentRound++;
+    room.gladiatorState.selectedCards = {};
+    room.gladiatorState.readyPlayers.clear();
+    room.gladiatorState.waitingForNextRound = false;
+    room.lastActivity = new Date();
+    
+    // Notify all players of next round
+    io.to(roomId).emit('next-round', {
+      roundNumber: room.gladiatorState.currentRound
+    });
+    
+    console.log(`${player.name} started round ${room.gladiatorState.currentRound} in room ${roomId}`);
   });
   
   socket.on('disconnect', () => {

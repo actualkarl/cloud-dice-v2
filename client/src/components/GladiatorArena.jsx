@@ -9,6 +9,7 @@ function GladiatorArena({ socket, room, playerName, players }) {
   const [gladiatorState, setGladiatorState] = useState(null)
   const [roundScores, setRoundScores] = useState({})
   const [lastReveal, setLastReveal] = useState(null)
+  const [waitingForNextRound, setWaitingForNextRound] = useState(false)
 
   const currentPlayer = players.find(p => p.name === playerName)
   const isHost = currentPlayer?.isHost || false
@@ -47,15 +48,22 @@ function GladiatorArena({ socket, room, playerName, players }) {
       setOpponentReady(false)
     })
 
+    socket.on('round-complete-waiting', (data) => {
+      console.log('Round complete, waiting for next round:', data)
+      setWaitingForNextRound(true)
+    })
+
     socket.on('next-round', (data) => {
       console.log('Next round:', data)
       setLastReveal(null)
+      setWaitingForNextRound(false)
       // Ready for next round
     })
 
     socket.on('match-complete', (data) => {
       console.log('Match complete:', data)
       setLastReveal(null)
+      setWaitingForNextRound(false)
       // Match is over - could show final results
     })
 
@@ -64,6 +72,7 @@ function GladiatorArena({ socket, room, playerName, players }) {
       socket.off('card-selected')
       socket.off('player-ready-status')
       socket.off('cards-revealed') 
+      socket.off('round-complete-waiting')
       socket.off('next-round')
       socket.off('match-complete')
     }
@@ -106,6 +115,12 @@ function GladiatorArena({ socket, room, playerName, players }) {
     // TODO: Emit socket event for role selection
     if (socket) {
       socket.emit('select-role', { role })
+    }
+  }
+
+  const handleStartNextRound = () => {
+    if (socket && isHost) {
+      socket.emit('start-next-round', {})
     }
   }
 
@@ -230,6 +245,49 @@ function GladiatorArena({ socket, room, playerName, players }) {
                     ⚖️ Round tied!
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Next Round button for host */}
+            {waitingForNextRound && isHost && (
+              <div style={{
+                marginBottom: '2rem',
+                textAlign: 'center',
+                padding: '1.5rem',
+                background: 'rgba(33, 150, 243, 0.2)',
+                borderRadius: '10px',
+                border: '2px solid rgba(33, 150, 243, 0.5)'
+              }}>
+                <p style={{ marginBottom: '1rem', fontSize: '1.1rem' }}>
+                  Round complete! Ready for the next round?
+                </p>
+                <button 
+                  className="btn btn-primary"
+                  onClick={handleStartNextRound}
+                  style={{
+                    fontSize: '1.2rem',
+                    padding: '1rem 2rem',
+                    minWidth: '200px'
+                  }}
+                >
+                  ▶️ Start Next Round
+                </button>
+              </div>
+            )}
+
+            {/* Waiting message for non-hosts */}
+            {waitingForNextRound && !isHost && (
+              <div style={{
+                marginBottom: '2rem',
+                textAlign: 'center',
+                padding: '1.5rem',
+                background: 'rgba(255, 152, 0, 0.2)',
+                borderRadius: '10px',
+                border: '2px solid rgba(255, 152, 0, 0.5)'
+              }}>
+                <p style={{ fontSize: '1.1rem', color: '#ff9800' }}>
+                  ⏳ Waiting for host to start the next round...
+                </p>
               </div>
             )}
 

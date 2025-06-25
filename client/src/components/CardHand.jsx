@@ -109,6 +109,22 @@ function CardHand({ cards, selectedCard, onCardSelect, isReady, onReady, opponen
           {!isMyTurn && <p style={{ color: '#ff9800' }}>Waiting for your turn...</p>}
           {opponentReady && <p style={{ color: '#4CAF50' }}>Opponent is ready!</p>}
           {!selectedCard && isMyTurn && <p>Select a card to play</p>}
+          {selectedCard && isReady && (
+            <div style={{ 
+              marginTop: '1rem',
+              padding: '1rem',
+              background: 'rgba(76, 175, 80, 0.2)',
+              borderRadius: '8px',
+              border: '1px solid rgba(76, 175, 80, 0.5)'
+            }}>
+              <p style={{ color: '#4CAF50', fontWeight: 'bold' }}>
+                Your selected card: {selectedCard}
+              </p>
+              <p style={{ fontSize: '0.8rem', opacity: 0.8 }}>
+                (Only you can see this)
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>
