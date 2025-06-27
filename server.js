@@ -9,6 +9,7 @@ import crypto from 'crypto';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import validator from 'validator';
+import * as combatEngine from './game-logic/combat-engine.js';
 
 dotenv.config();
 
@@ -1021,6 +1022,140 @@ io.on('connection', (socket) => {
     
     console.log(`[DEBUG] Host ${player.name} forcing card reveal`);
     revealCards(room, roomId);
+  });
+
+  // NEW GLADIATOR COMBAT ENGINE EVENTS
+  
+  socket.on('select-gladiator-type', (data) => {
+    const roomId = userRooms.get(socket.id);
+    const room = rooms.get(roomId);
+    
+    if (!room || room.arenaType !== 'gladiator') {
+      socket.emit('error', { message: 'Not in gladiator mode' });
+      return;
+    }
+    
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player || player.role !== 'fighter') {
+      socket.emit('error', { message: 'Only fighters can select gladiator type' });
+      return;
+    }
+    
+    const { gladiatorType } = data;
+    if (!['light', 'medium', 'heavy'].includes(gladiatorType)) {
+      socket.emit('error', { message: 'Invalid gladiator type' });
+      return;
+    }
+    
+    // Initialize or update combat game state
+    if (!room.combatState) {
+      const fighters = room.players.filter(p => p.role === 'fighter');
+      room.combatState = combatEngine.createGameState(roomId, fighters);
+    }
+    
+    // Set gladiator type
+    room.combatState.players[socket.id].gladiatorType = gladiatorType;
+    
+    // Check if all fighters have selected types
+    const allTypesSelected = room.combatState.activePlayers.every(playerId => 
+      room.combatState.players[playerId].gladiatorType
+    );
+    
+    if (allTypesSelected) {
+      try {
+        combatEngine.initializePlayerDecks(room.combatState);
+        combatEngine.startNewRound(room.combatState);
+        
+        // Send game state to all players
+        io.to(roomId).emit('gladiator-game-started', {
+          phase: room.combatState.phase,
+          round: room.combatState.round
+        });
+        
+        // Send hands to fighters
+        for (const playerId of room.combatState.activePlayers) {
+          const playerState = room.combatState.players[playerId];
+          io.to(playerId).emit('hand-dealt', {
+            hand: playerState.hand,
+            stats: {
+              hp: playerState.hp,
+              stamina: playerState.stamina,
+              gladiatorType: playerState.gladiatorType
+            }
+          });
+        }
+      } catch (error) {
+        console.error('Error initializing combat:', error);
+        socket.emit('error', { message: 'Failed to start combat' });
+      }
+    }
+    
+    socket.emit('gladiator-type-selected', { gladiatorType });
+    console.log(`${player.name} selected ${gladiatorType} gladiator in room ${roomId}`);
+  });
+  
+  socket.on('play-cards', (data) => {
+    const roomId = userRooms.get(socket.id);
+    const room = rooms.get(roomId);
+    
+    if (!room || !room.combatState) {
+      socket.emit('error', { message: 'No active combat' });
+      return;
+    }
+    
+    const { cardIndices } = data;
+    
+    try {
+      const selectedCards = combatEngine.selectCardsForPosturing(
+        room.combatState, 
+        socket.id, 
+        cardIndices
+      );
+      
+      socket.emit('cards-played', { selectedCards: selectedCards.length });
+      
+      // Check if all players have selected
+      if (combatEngine.checkPosturingComplete(room.combatState)) {
+        // Auto-skip discard phase for now
+        combatEngine.skipDiscardPhase(room.combatState);
+        
+        // Resolve battle
+        const battleResults = combatEngine.resolveBattle(room.combatState);
+        
+        // Check for game end
+        const gameEnd = combatEngine.checkGameEnd(room.combatState);
+        
+        // Broadcast battle results
+        io.to(roomId).emit('battle-resolved', {
+          results: battleResults,
+          gameEnd
+        });
+        
+        if (!gameEnd.gameOver) {
+          // Prepare for next round
+          setTimeout(() => {
+            combatEngine.startNewRound(room.combatState);
+            
+            // Send updated hands
+            for (const playerId of room.combatState.activePlayers) {
+              const playerState = room.combatState.players[playerId];
+              io.to(playerId).emit('new-round-started', {
+                round: room.combatState.round,
+                hand: playerState.hand,
+                stats: {
+                  hp: playerState.hp,
+                  stamina: playerState.stamina,
+                  armor: playerState.armor
+                }
+              });
+            }
+          }, 3000); // 3 second delay between rounds
+        }
+      }
+      
+    } catch (error) {
+      socket.emit('error', { message: error.message });
+    }
   });
   
   socket.on('disconnect', () => {
