@@ -465,6 +465,7 @@ function buildGladiatorDeck(gladiatorType) {
   // Convert to array for easier shuffling
   return Object.entries(selectedDeck).map(([key, card]) => ({
     ...card,
+    type: 'gladiator',
     originalKey: key
   }));
 }
@@ -472,6 +473,7 @@ function buildGladiatorDeck(gladiatorType) {
 function buildHeatDeck() {
   return Object.entries(HEAT_OF_BATTLE_DECK).map(([key, card]) => ({
     ...card,
+    type: 'heat',
     originalKey: key
   }));
 }

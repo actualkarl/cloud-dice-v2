@@ -1053,6 +1053,12 @@ io.on('connection', (socket) => {
       room.combatState = combatEngine.createGameState(roomId, fighters);
     }
     
+    // Verify player exists in combat state
+    if (!room.combatState.players[socket.id]) {
+      socket.emit('error', { message: 'Player not found in combat state. Please rejoin as a fighter.' });
+      return;
+    }
+    
     // Set gladiator type
     room.combatState.players[socket.id].gladiatorType = gladiatorType;
     
@@ -1116,9 +1122,44 @@ io.on('connection', (socket) => {
       
       // Check if all players have selected
       if (combatEngine.checkPosturingComplete(room.combatState)) {
-        // Auto-skip discard phase for now
-        combatEngine.skipDiscardPhase(room.combatState);
-        
+        // Notify players that posturing is complete and discard phase has begun
+        io.to(roomId).emit('discard-phase-started', {
+          gameState: combatEngine.getGameStateSummary(room.combatState, socket.id)
+        });
+      }
+      
+    } catch (error) {
+      socket.emit('error', { message: error.message });
+    }
+  });
+  
+  // Handle discard phase
+  socket.on('gladiator-discard', (data) => {
+    const roomId = userRooms.get(socket.id);
+    const room = rooms.get(roomId);
+    
+    if (!room || !room.combatState) {
+      socket.emit('error', { message: 'No active combat' });
+      return;
+    }
+    
+    const { cardIndices = [], useStamina = false } = data;
+    
+    try {
+      const discardResult = combatEngine.processDiscard(
+        room.combatState,
+        socket.id,
+        cardIndices,
+        useStamina
+      );
+      
+      socket.emit('discard-complete', { 
+        discarded: discardResult.cards.length,
+        staminaCost: discardResult.staminaCost 
+      });
+      
+      // Check if all players have made discard decisions
+      if (combatEngine.checkDiscardComplete(room.combatState)) {
         // Resolve battle
         const battleResults = combatEngine.resolveBattle(room.combatState);
         
@@ -1152,7 +1193,6 @@ io.on('connection', (socket) => {
           }, 3000); // 3 second delay between rounds
         }
       }
-      
     } catch (error) {
       socket.emit('error', { message: error.message });
     }

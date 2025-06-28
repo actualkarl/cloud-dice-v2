@@ -210,6 +210,41 @@ export function selectCardsForPosturing(gameState, playerId, cardIndices) {
     handIndex: index
   }));
   
+  // Process immediate Heat effects from selected cards
+  const immediateEffects = [];
+  for (const selection of player.selectedCards) {
+    const card = selection.card;
+    if (card.type === 'heat' && card.timing === 'immediate') {
+      immediateEffects.push(card);
+      
+      // Apply immediate effects
+      switch (card.effect) {
+        case 'block5armor10':
+          player.armor += 10;
+          break;
+          
+        case 'heal5':
+          player.hp = Math.min(player.maxHp, player.hp + 5);
+          break;
+          
+        case 'peek3draw1':
+          // Draw 1 card from deck
+          if (player.deck.length > 0) {
+            drawCards(player, 1);
+          }
+          break;
+      }
+      
+      // Handle stamina cost
+      if (typeof card.stamina === 'number') {
+        player.stamina = Math.max(0, player.stamina + card.stamina);
+        if (player.stamina === 0) {
+          player.isGassedOut = true;
+        }
+      }
+    }
+  }
+  
   player.isReady = true;
   gameState.lastActivity = Date.now();
   
@@ -224,6 +259,24 @@ export function checkPosturingComplete(gameState) {
   
   if (!allPlayersReady(gameState)) {
     return false;
+  }
+  
+  // Process posturing phase Heat effects before moving to discard
+  const posturingEffects = processHeatCardEffects(gameState, 'posturing');
+  
+  // Handle specific posturing effects
+  for (const effect of posturingEffects) {
+    if (effect.effect === 'randomDiscard') {
+      // Each player randomly discards one face-down card
+      for (const playerId of gameState.activePlayers) {
+        const player = gameState.players[playerId];
+        if (player.selectedCards.length > 0) {
+          const randomIndex = Math.floor(Math.random() * player.selectedCards.length);
+          const discarded = player.selectedCards.splice(randomIndex, 1)[0];
+          player.discardPile.push(discarded.card);
+        }
+      }
+    }
   }
   
   // Move to discard phase
@@ -268,15 +321,92 @@ export function clearCardSelection(gameState, playerId) {
 
 // DISCARD PHASE FUNCTIONS
 
-// Skip discard phase for now, go straight to battle
-export function skipDiscardPhase(gameState) {
+// Process player discard decision
+export function processDiscard(gameState, playerId, cardIndices, useStaminaForDiscard = false) {
   if (gameState.phase !== GAME_PHASES.DISCARD) {
     throw new Error('Not in discard phase');
   }
   
+  const player = gameState.players[playerId];
+  if (!player) {
+    throw new Error('Player not found');
+  }
+  
+  // Validate discard request
+  if (cardIndices.length > 0) {
+    // Check card indices are valid
+    for (const index of cardIndices) {
+      if (index < 0 || index >= player.hand.length) {
+        throw new Error(`Invalid card index: ${index}`);
+      }
+    }
+    
+    // Check for duplicates
+    if (new Set(cardIndices).size !== cardIndices.length) {
+      throw new Error('Cannot discard the same card multiple times');
+    }
+    
+    // If using stamina for discard, check stamina cost
+    if (useStaminaForDiscard) {
+      const staminaCost = cardIndices.length * 2; // 2 stamina per discarded card
+      if (player.stamina < staminaCost) {
+        throw new Error(`Not enough stamina (need ${staminaCost}, have ${player.stamina})`);
+      }
+      
+      // Pay stamina cost
+      player.stamina = Math.max(0, player.stamina - staminaCost);
+      
+      // Check for gas out
+      if (player.stamina === 0) {
+        player.isGassedOut = true;
+      }
+    }
+    
+    // Discard selected cards (in reverse order to maintain indices)
+    const sortedIndices = [...cardIndices].sort((a, b) => b - a);
+    const discardedCards = [];
+    
+    for (const index of sortedIndices) {
+      const discardedCard = player.hand.splice(index, 1)[0];
+      player.discardPile.push(discardedCard);
+      discardedCards.push(discardedCard);
+    }
+    
+    // Draw replacement cards
+    drawCards(player, cardIndices.length);
+    
+    player.discardedThisPhase = {
+      cards: discardedCards,
+      staminaCost: useStaminaForDiscard ? cardIndices.length * 2 : 0
+    };
+  } else {
+    // Player chooses not to discard
+    player.discardedThisPhase = {
+      cards: [],
+      staminaCost: 0
+    };
+  }
+  
+  player.isReady = true;
+  gameState.lastActivity = Date.now();
+  
+  return player.discardedThisPhase;
+}
+
+// Check if all players have made discard decisions
+export function checkDiscardComplete(gameState) {
+  if (gameState.phase !== GAME_PHASES.DISCARD) {
+    return false;
+  }
+  
+  if (!allPlayersReady(gameState)) {
+    return false;
+  }
+  
+  // Move to battle phase
   gameState.phase = GAME_PHASES.BATTLE;
   
-  // Reset ready states for battle phase
+  // Reset ready states for battle phase  
   for (const playerId of gameState.activePlayers) {
     gameState.players[playerId].isReady = true; // Auto-ready for battle
   }
@@ -284,13 +414,100 @@ export function skipDiscardPhase(gameState) {
   return true;
 }
 
+// Skip discard phase (for compatibility)
+export function skipDiscardPhase(gameState) {
+  if (gameState.phase !== GAME_PHASES.DISCARD) {
+    throw new Error('Not in discard phase');
+  }
+  
+  // Set all players as having made no discards
+  for (const playerId of gameState.activePlayers) {
+    const player = gameState.players[playerId];
+    player.discardedThisPhase = {
+      cards: [],
+      staminaCost: 0
+    };
+    player.isReady = true;
+  }
+  
+  gameState.phase = GAME_PHASES.BATTLE;
+  return true;
+}
+
 // BATTLE PHASE FUNCTIONS
+
+// Process Heat card effects based on timing
+function processHeatCardEffects(gameState, timing) {
+  const effects = [];
+  
+  for (const playerId of gameState.activePlayers) {
+    const player = gameState.players[playerId];
+    
+    for (const selection of player.selectedCards) {
+      const card = selection.card;
+      
+      // Check if this is a Heat card with the right timing
+      if (card.type === 'heat' && card.timing === timing) {
+        effects.push({
+          playerId,
+          card,
+          effect: card.effect
+        });
+        
+        // Apply immediate effects
+        switch (card.effect) {
+          case 'block5armor10':
+            player.armor += 10;
+            // Block will be added in battle calculation
+            break;
+            
+          case 'heal5':
+            player.hp = Math.min(player.maxHp, player.hp + 5);
+            break;
+            
+          case 'peek3draw1':
+            // Draw 1 card from deck
+            if (player.deck.length > 0) {
+              drawCards(player, 1);
+            }
+            break;
+            
+          case 'extraCard':
+            // Draw 1 extra card
+            drawCards(player, 1);
+            break;
+        }
+        
+        // Handle stamina cost
+        if (card.stamina === 'all') {
+          player.stamina = 0;
+          player.isGassedOut = true;
+        } else if (typeof card.stamina === 'number') {
+          player.stamina = Math.max(0, player.stamina + card.stamina);
+          if (player.stamina === 0) {
+            player.isGassedOut = true;
+          }
+        }
+        
+        // Remove card from game if needed
+        if (card.removeFromGame) {
+          player.removedCards.push(card);
+        }
+      }
+    }
+  }
+  
+  return effects;
+}
 
 // Resolve combat between all players
 export function resolveBattle(gameState) {
   if (gameState.phase !== GAME_PHASES.BATTLE) {
     throw new Error('Not in battle phase');
   }
+  
+  // Process pre-battle Heat effects
+  const preBattleEffects = processHeatCardEffects(gameState, 'battleStart');
   
   const battleResults = {};
   
@@ -307,6 +524,8 @@ export function resolveBattle(gameState) {
     let totalBlock = 0;
     let staminaChange = 0;
     let armorGain = 0;
+    let heatBlockBonus = 0;
+    let heatAttackBonus = 0;
     
     const playedCards = [];
     
@@ -315,11 +534,27 @@ export function resolveBattle(gameState) {
       
       totalAttack += card.attack || 0;
       totalBlock += card.block || 0;
-      staminaChange += (card.stamina !== undefined) ? card.stamina : 0;
+      
+      // Handle regular stamina (Heat card stamina handled separately)
+      if (card.type !== 'heat' && card.stamina !== undefined) {
+        staminaChange += card.stamina;
+      }
       
       // Handle armor cards
       if (card.special === 'addArmor' && card.armor) {
         armorGain += card.armor;
+      }
+      
+      // Handle Heat card battle bonuses
+      if (card.type === 'heat') {
+        switch (card.effect) {
+          case 'block5armor10':
+            heatBlockBonus += 5;
+            break;
+          case 'addAttack2':
+            heatAttackBonus += 2;
+            break;
+        }
       }
       
       playedCards.push(card);
@@ -329,6 +564,10 @@ export function resolveBattle(gameState) {
     const gladiatorStats = GLADIATOR_TYPES[player.gladiatorType.toUpperCase()];
     totalAttack += gladiatorStats.baseAttack;
     totalBlock += gladiatorStats.baseBlock;
+    
+    // Add Heat card bonuses
+    totalAttack += heatAttackBonus;
+    totalBlock += heatBlockBonus;
     
     // Apply gas out penalties
     if (player.isGassedOut) {
@@ -348,7 +587,8 @@ export function resolveBattle(gameState) {
       armorGain,
       playedCards,
       hpBefore: player.hp,
-      staminaBefore: player.stamina
+      staminaBefore: player.stamina,
+      heatEffects: preBattleEffects.filter(e => e.playerId === playerId)
     };
   }
   
@@ -359,9 +599,38 @@ export function resolveBattle(gameState) {
     const p1Result = battleResults[p1Id];
     const p2Result = battleResults[p2Id];
     
+    // Calculate evasion bonuses
+    // Light gladiators get +1 evasion (block) when at full stamina
+    let p1EvasionBonus = 0;
+    let p2EvasionBonus = 0;
+    
+    const p1Gladiator = gameState.players[p1Id].gladiatorType;
+    const p2Gladiator = gameState.players[p2Id].gladiatorType;
+    
+    if (p1Gladiator === 'light' && gameState.players[p1Id].stamina >= gameState.players[p1Id].maxStamina * 0.8) {
+      p1EvasionBonus = 1;
+    }
+    if (p2Gladiator === 'light' && gameState.players[p2Id].stamina >= gameState.players[p2Id].maxStamina * 0.8) {
+      p2EvasionBonus = 1;
+    }
+    
+    // Apply evasion to block totals
+    p1Result.totalBlock += p1EvasionBonus;
+    p2Result.totalBlock += p2EvasionBonus;
+    
     // Calculate damage dealt
-    const p1Damage = Math.max(0, p1Result.totalAttack - p2Result.totalBlock);
-    const p2Damage = Math.max(0, p2Result.totalAttack - p1Result.totalBlock);
+    let p1Damage = Math.max(0, p1Result.totalAttack - p2Result.totalBlock);
+    let p2Damage = Math.max(0, p2Result.totalAttack - p1Result.totalBlock);
+    
+    // Check for damage negation Heat effects (battleEnd timing)
+    const postBattleEffects = processHeatCardEffects(gameState, 'battleEnd');
+    
+    // Check if any player has Sacrificial Queen (negateAllDamage)
+    const hasNegation = postBattleEffects.some(effect => effect.effect === 'negateAllDamage');
+    if (hasNegation) {
+      p1Damage = 0;
+      p2Damage = 0;
+    }
     
     // Apply damage
     gameState.players[p1Id].hp = Math.max(0, gameState.players[p1Id].hp - p2Damage);
