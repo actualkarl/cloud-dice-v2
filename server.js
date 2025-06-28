@@ -1156,12 +1156,24 @@ io.on('connection', (socket) => {
       
       socket.emit('cards-played', { selectedCards: selectedCards.length });
       
+      // Broadcast game state update to all players
+      for (const playerId of room.combatState.activePlayers) {
+        io.to(playerId).emit('game-state-update', 
+          combatEngine.getGameStateSummary(room.combatState, playerId)
+        );
+      }
+      
       // Check if all players have selected
       if (combatEngine.checkPosturingComplete(room.combatState)) {
         // Notify players that posturing is complete and discard phase has begun
-        io.to(roomId).emit('discard-phase-started', {
-          gameState: combatEngine.getGameStateSummary(room.combatState, socket.id)
-        });
+        io.to(roomId).emit('discard-phase-started');
+        
+        // Send updated game state for discard phase
+        for (const playerId of room.combatState.activePlayers) {
+          io.to(playerId).emit('game-state-update', 
+            combatEngine.getGameStateSummary(room.combatState, playerId)
+          );
+        }
       }
       
     } catch (error) {
@@ -1193,6 +1205,13 @@ io.on('connection', (socket) => {
         discarded: discardResult.cards.length,
         staminaCost: discardResult.staminaCost 
       });
+      
+      // Broadcast game state update
+      for (const playerId of room.combatState.activePlayers) {
+        io.to(playerId).emit('game-state-update', 
+          combatEngine.getGameStateSummary(room.combatState, playerId)
+        );
+      }
       
       // Check if all players have made discard decisions
       if (combatEngine.checkDiscardComplete(room.combatState)) {
