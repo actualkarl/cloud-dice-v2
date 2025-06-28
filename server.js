@@ -1048,9 +1048,45 @@ io.on('connection', (socket) => {
     }
     
     // Initialize or update combat game state
+    const fighters = room.players.filter(p => p.role === 'fighter');
+    
     if (!room.combatState) {
-      const fighters = room.players.filter(p => p.role === 'fighter');
       room.combatState = combatEngine.createGameState(roomId, fighters);
+    } else {
+      // Add any new fighters to existing combat state
+      for (const fighter of fighters) {
+        if (!room.combatState.players[fighter.id]) {
+          room.combatState.players[fighter.id] = {
+            id: fighter.id,
+            name: fighter.name,
+            gladiatorType: null,
+            hp: 10,
+            maxHp: 10,
+            stamina: 24,
+            maxStamina: 24,
+            armor: 0,
+            deck: [],
+            hand: [],
+            playedCards: [],
+            discardPile: [],
+            removedCards: [],
+            isGassedOut: false,
+            isReady: false,
+            selectedCards: []
+          };
+          if (!room.combatState.activePlayers.includes(fighter.id)) {
+            room.combatState.activePlayers.push(fighter.id);
+          }
+        }
+      }
+      
+      // Remove any players who are no longer fighters
+      for (const playerId of room.combatState.activePlayers) {
+        if (!fighters.find(f => f.id === playerId)) {
+          delete room.combatState.players[playerId];
+          room.combatState.activePlayers = room.combatState.activePlayers.filter(id => id !== playerId);
+        }
+      }
     }
     
     // Verify player exists in combat state
