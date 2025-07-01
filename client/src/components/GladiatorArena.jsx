@@ -127,6 +127,23 @@ function GladiatorArena({ socket, room, playerName, players }) {
       setWaitingForOpponent(!data.myStats?.isReady && data.opponents?.some(o => !o.isReady))
     })
 
+    socket.on('gladiator-game-reset', (data) => {
+      // Reset all local state
+      setGamePhase('selection')
+      setGladiatorType(null)
+      setHand([])
+      setSelectedCardIndices([])
+      setPlayerStats({ hp: 10, stamina: 24, armor: 0 })
+      setBattleResults(null)
+      setGameStarted(false)
+      setCurrentRound(0)
+      setPlayerRole(null)
+      setDiscardIndices([])
+      setUseStaminaForDiscard(false)
+      setOpponentInfo(null)
+      setWaitingForOpponent(false)
+    })
+
     return () => {
       socket.off('gladiator-type-selected')
       socket.off('gladiator-game-started')
@@ -135,6 +152,7 @@ function GladiatorArena({ socket, room, playerName, players }) {
       socket.off('new-round-started')
       socket.off('discard-phase-started')
       socket.off('game-state-update')
+      socket.off('gladiator-game-reset')
     }
   }, [socket, playerName])
 
@@ -707,11 +725,33 @@ function GladiatorArena({ socket, room, playerName, players }) {
               borderRadius: '8px',
               fontSize: '0.8rem',
               textAlign: 'center',
-              borderLeft: '3px solid #2196F3'
+              borderLeft: '3px solid #2196F3',
+              marginBottom: '1.5rem'
             }}>
               <strong>💡 How damage was calculated:</strong><br/>
               Each player's Attack total was compared to their opponent's Defense total. 
               Unblocked attack points became damage.
+            </div>
+            
+            {/* Reset Button */}
+            <div style={{ textAlign: 'center' }}>
+              <button 
+                className="btn btn-primary"
+                onClick={() => {
+                  if (socket) {
+                    socket.emit('reset-gladiator-game');
+                  }
+                }}
+                style={{ 
+                  fontSize: '1.1rem',
+                  padding: '0.75rem 2rem',
+                  backgroundColor: '#4CAF50',
+                  borderColor: '#4CAF50',
+                  fontWeight: 'bold'
+                }}
+              >
+                🔄 Reset Game
+              </button>
             </div>
           </div>
         )}

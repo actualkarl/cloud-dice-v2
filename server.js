@@ -1253,6 +1253,44 @@ io.on('connection', (socket) => {
     }
   });
   
+  socket.on('reset-gladiator-game', () => {
+    const roomId = userRooms.get(socket.id);
+    const room = rooms.get(roomId);
+    
+    if (!room || room.arenaType !== 'gladiator') {
+      socket.emit('error', { message: 'Not in gladiator mode' });
+      return;
+    }
+    
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player || player.role !== 'fighter') {
+      socket.emit('error', { message: 'Only fighters can reset the game' });
+      return;
+    }
+    
+    // Reset the combat state completely
+    if (room.combatState) {
+      delete room.combatState;
+    }
+    
+    // Reset player gladiator types and roles
+    room.players.forEach(p => {
+      if (p.role === 'fighter') {
+        delete p.gladiatorType;
+        p.role = null; // Reset role selection
+      }
+    });
+    
+    room.lastActivity = new Date();
+    
+    console.log(`Game reset by ${player.name} in room ${roomId}`);
+    
+    // Notify all players that the game has been reset
+    io.to(roomId).emit('gladiator-game-reset', {
+      resetBy: player.name
+    });
+  });
+  
   socket.on('disconnect', () => {
     // Clean up IP connection tracking
     const count = ipConnections.get(hashedIP) || 0;
