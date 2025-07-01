@@ -287,6 +287,92 @@ node tools/upload-balance-report.js report.json
 4. Test with existing multiplayer infrastructure
 5. Ensure dice mode still works perfectly
 
+## CRITICAL FIXES FROM PLAYTESTING (Priority 1)
+
+### Issue 1: Game Freezes When Players Run Out of Cards
+**Problem:** When a player's deck is empty, the game gets stuck and cannot continue.
+
+**Solution:** Implement automatic deck recycling with the following logic:
+```javascript
+// When drawing cards:
+// 1. Check if deck is empty
+// 2. If empty, shuffle discard pile into deck
+// 3. Clear discard pile
+// 4. Handle edge case where both deck AND discard are empty
+// 5. Cards with 'removeFromGame' special NEVER go to discard
+```
+
+**Implementation Steps:**
+1. Modify the card drawing function in server-side game logic
+2. Add proper card tracking:
+   - `deck[]` - Cards available to draw
+   - `hand[]` - Cards currently in hand
+   - `discardPile[]` - Used cards that will reshuffle
+   - `removedFromGame[]` - Cards permanently removed (special cards)
+3. When playing cards:
+   ```javascript
+   if (card.special === 'removeFromGame') {
+     player.removedFromGame.push(card);
+   } else {
+     player.discardPile.push(card);
+   }
+   ```
+4. Add socket event `'deck-recycled'` to notify all players when shuffle occurs
+5. Update UI to show deck count and discard pile count
+
+### Issue 2: Stamina System Is Backwards
+**Problem:** Stamina values on cards are being ADDED to player stamina instead of being SUBTRACTED as costs.
+
+**Critical Understanding:**
+- Stamina values on cards = COST to play (should SUBTRACT)
+- Negative stamina values = penalties that give stamina back (should ADD)
+- Base armor stamina drain per round: Light=1, Medium=3, Heavy=4
+
+**Correct Implementation:**
+```javascript
+// Per round stamina calculation
+function calculateRoundStaminaCost(player, cardsPlayed) {
+  let totalCost = 0;
+  
+  // Base armor drain
+  const armorDrain = { 'light': 1, 'medium': 3, 'heavy': 4 };
+  totalCost += armorDrain[player.gladiatorType];
+  
+  // Card costs (positive = cost, negative = gain)
+  cardsPlayed.forEach(card => {
+    totalCost += card.stamina; // If negative, reduces total cost
+  });
+  
+  // Apply cost
+  player.stamina -= totalCost;
+  
+  // Check for gas out
+  if (player.stamina <= 0) {
+    player.isGassedOut = true;
+    player.stamina = 0;
+    // Gassed players: can only draw 3 cards, cannot discard
+  }
+}
+```
+
+**Implementation Steps:**
+1. Fix stamina calculation in combat resolution
+2. Ensure starting stamina is set correctly (base values from gladiator types)
+3. Implement gas out penalties:
+   - Can only draw up to 3 cards
+   - Cannot use discard mechanic
+   - Reduced combat effectiveness
+4. Add stamina display to UI showing current/max
+5. Test with all card types to ensure costs work correctly
+
+### Testing These Fixes:
+1. **Deck Recycling Test:** Play rapidly through multiple rounds, use all cards
+2. **Stamina Test:** Play high-cost cards and verify stamina decreases
+3. **Gas Out Test:** Intentionally drain stamina to 0 and verify penalties apply
+4. **Remove From Game Test:** Play cards with removeFromGame and verify they don't return
+
+**IMPORTANT:** These are blocking issues that prevent proper gameplay. Fix these before implementing any new features.
+
 ## Future Roadmap
 - Tournament brackets
 - Seasonal rankings

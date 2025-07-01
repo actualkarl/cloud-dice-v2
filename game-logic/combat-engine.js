@@ -86,12 +86,32 @@ function shuffleDeck(array) {
   return shuffled;
 }
 
-// Draw cards from deck
+// Draw cards from deck with automatic recycling
 export function drawCards(player, count) {
   const drawn = [];
-  for (let i = 0; i < count && player.deck.length > 0; i++) {
-    drawn.push(player.deck.shift());
+  
+  for (let i = 0; i < count; i++) {
+    // Check if deck is empty
+    if (player.deck.length === 0) {
+      // Try to recycle discard pile
+      if (player.discardPile.length > 0) {
+        // Move discard pile to deck and shuffle
+        player.deck = shuffleDeck([...player.discardPile]);
+        player.discardPile = [];
+        console.log(`[DECK] Player ${player.name} recycled discard pile into deck (${player.deck.length} cards)`);
+      } else {
+        // Both deck and discard are empty - can't draw more cards
+        console.log(`[DECK] Player ${player.name} has no more cards to draw (${drawn.length}/${count} drawn)`);
+        break;
+      }
+    }
+    
+    // Draw card if deck has cards
+    if (player.deck.length > 0) {
+      drawn.push(player.deck.shift());
+    }
   }
+  
   player.hand.push(...drawn);
   return drawn;
 }
@@ -110,18 +130,21 @@ export function startNewRound(gameState) {
     
     // Check for gas out recovery
     if (player.isGassedOut) {
-      // Recover some stamina when gassed out
+      // Recover some stamina when gassed out (base stamina per round)
       const gladiatorStats = GLADIATOR_TYPES[player.gladiatorType.toUpperCase()];
       player.stamina = Math.min(player.maxStamina, player.stamina + gladiatorStats.baseStamina);
       
-      // Check if recovered enough to continue fighting
-      if (player.stamina >= 5) {
+      // Check if recovered enough to continue fighting (need at least half base stamina)
+      const minStaminaToRecover = Math.ceil(gladiatorStats.baseStamina / 2);
+      if (player.stamina >= minStaminaToRecover) {
         player.isGassedOut = false;
+        console.log(`[STAMINA] Player ${player.name} recovered from gas out (${player.stamina} stamina)`);
       }
     }
     
-    // Draw cards if needed (back to 7 in hand)
-    const cardsNeeded = 7 - player.hand.length;
+    // Draw cards if needed (back to 7 in hand, or 3 if gassed out)
+    const maxHandSize = player.isGassedOut ? 3 : 7;
+    const cardsNeeded = maxHandSize - player.hand.length;
     if (cardsNeeded > 0) {
       drawCards(player, cardsNeeded);
     }
@@ -235,9 +258,9 @@ export function selectCardsForPosturing(gameState, playerId, cardIndices) {
           break;
       }
       
-      // Handle stamina cost
+      // Handle stamina cost (positive values are costs, negative values are gains)
       if (typeof card.stamina === 'number') {
-        player.stamina = Math.max(0, player.stamina + card.stamina);
+        player.stamina = Math.max(0, player.stamina - card.stamina);
         if (player.stamina === 0) {
           player.isGassedOut = true;
         }
@@ -332,6 +355,11 @@ export function processDiscard(gameState, playerId, cardIndices, useStaminaForDi
     throw new Error('Player not found');
   }
   
+  // Check if player is gassed out (cannot discard)
+  if (player.isGassedOut && cardIndices.length > 0) {
+    throw new Error('Gassed out players cannot discard cards');
+  }
+  
   // Validate discard request
   if (cardIndices.length > 0) {
     // Check card indices are valid
@@ -368,7 +396,15 @@ export function processDiscard(gameState, playerId, cardIndices, useStaminaForDi
     
     for (const index of sortedIndices) {
       const discardedCard = player.hand.splice(index, 1)[0];
-      player.discardPile.push(discardedCard);
+      
+      // Check if card should be removed from game
+      if (discardedCard.special === 'removeFromGame' || discardedCard.removeFromGame) {
+        player.removedCards.push(discardedCard);
+        console.log(`[CARDS] ${discardedCard.name} removed from game permanently (discarded)`);
+      } else {
+        player.discardPile.push(discardedCard);
+      }
+      
       discardedCards.push(discardedCard);
     }
     
@@ -483,7 +519,7 @@ function processHeatCardEffects(gameState, timing) {
           player.stamina = 0;
           player.isGassedOut = true;
         } else if (typeof card.stamina === 'number') {
-          player.stamina = Math.max(0, player.stamina + card.stamina);
+          player.stamina = Math.max(0, player.stamina - card.stamina);
           if (player.stamina === 0) {
             player.isGassedOut = true;
           }
@@ -536,8 +572,9 @@ export function resolveBattle(gameState) {
       totalBlock += card.block || 0;
       
       // Handle regular stamina (Heat card stamina handled separately)
+      // Positive stamina values are COSTS (subtract), negative are GAINS (add back)
       if (card.type !== 'heat' && card.stamina !== undefined) {
-        staminaChange += card.stamina;
+        staminaChange -= card.stamina;
       }
       
       // Handle armor cards
@@ -560,10 +597,13 @@ export function resolveBattle(gameState) {
       playedCards.push(card);
     }
     
-    // Add gladiator type bonuses
+    // Add gladiator type bonuses and stamina drain
     const gladiatorStats = GLADIATOR_TYPES[player.gladiatorType.toUpperCase()];
     totalAttack += gladiatorStats.baseAttack;
     totalBlock += gladiatorStats.baseBlock;
+    
+    // Apply base armor stamina drain per round
+    staminaChange -= gladiatorStats.staminaDrain;
     
     // Add Heat card bonuses
     totalAttack += heatAttackBonus;
@@ -637,15 +677,23 @@ export function resolveBattle(gameState) {
     gameState.players[p2Id].hp = Math.max(0, gameState.players[p2Id].hp - p1Damage);
     
     // Apply stamina changes and check for gas out
-    gameState.players[p1Id].stamina = Math.max(0, gameState.players[p1Id].stamina + p1Result.staminaChange);
-    gameState.players[p2Id].stamina = Math.max(0, gameState.players[p2Id].stamina + p2Result.staminaChange);
+    const p1NewStamina = Math.max(0, gameState.players[p1Id].stamina + p1Result.staminaChange);
+    const p2NewStamina = Math.max(0, gameState.players[p2Id].stamina + p2Result.staminaChange);
+    
+    console.log(`[STAMINA] ${gameState.players[p1Id].name}: ${gameState.players[p1Id].stamina} -> ${p1NewStamina} (change: ${p1Result.staminaChange})`);
+    console.log(`[STAMINA] ${gameState.players[p2Id].name}: ${gameState.players[p2Id].stamina} -> ${p2NewStamina} (change: ${p2Result.staminaChange})`);
+    
+    gameState.players[p1Id].stamina = p1NewStamina;
+    gameState.players[p2Id].stamina = p2NewStamina;
     
     // Check for gas out (stamina drops to 0)
-    if (gameState.players[p1Id].stamina === 0) {
+    if (gameState.players[p1Id].stamina === 0 && !gameState.players[p1Id].isGassedOut) {
       gameState.players[p1Id].isGassedOut = true;
+      console.log(`[GAS OUT] ${gameState.players[p1Id].name} is gassed out!`);
     }
-    if (gameState.players[p2Id].stamina === 0) {
+    if (gameState.players[p2Id].stamina === 0 && !gameState.players[p2Id].isGassedOut) {
       gameState.players[p2Id].isGassedOut = true;
+      console.log(`[GAS OUT] ${gameState.players[p2Id].name} is gassed out!`);
     }
     
     // Apply armor gains
@@ -666,7 +714,7 @@ export function resolveBattle(gameState) {
     p2Result.armorAfter = gameState.players[p2Id].armor;
   }
   
-  // Move played cards to discard pile and remove from hand
+  // Move played cards to discard pile or remove from game
   for (const playerId of gameState.activePlayers) {
     const player = gameState.players[playerId];
     
@@ -677,7 +725,14 @@ export function resolveBattle(gameState) {
       
     for (const index of indicesToRemove) {
       const removedCard = player.hand.splice(index, 1)[0];
-      player.discardPile.push(removedCard);
+      
+      // Check if card should be removed from game
+      if (removedCard.special === 'removeFromGame' || removedCard.removeFromGame) {
+        player.removedCards.push(removedCard);
+        console.log(`[CARDS] ${removedCard.name} removed from game permanently`);
+      } else {
+        player.discardPile.push(removedCard);
+      }
     }
     
     player.playedCards = player.selectedCards.map(s => s.card);
