@@ -371,6 +371,86 @@ function calculateRoundStaminaCost(player, cardsPlayed) {
 3. **Gas Out Test:** Intentionally drain stamina to 0 and verify penalties apply
 4. **Remove From Game Test:** Play cards with removeFromGame and verify they don't return
 
+### Issue 3: Fighter Stats Not Visible/Clear
+**Problem:** Fighters struggling to see their HP, Stamina, and Armor values during combat.
+
+**Solution:** Create a prominent stats display for fighters:
+```jsx
+// Fighter Stats Component (always visible)
+<div className="fighter-stats">
+  <div className="stat-bar hp">
+    <span className="label">HP</span>
+    <span className="value">{hp}/10</span>
+    <div className="bar" style={{width: `${(hp/10)*100}%`}} />
+  </div>
+  <div className="stat-bar stamina">
+    <span className="label">Stamina</span>
+    <span className="value">{stamina}/24</span>
+    <div className="bar" style={{width: `${(stamina/24)*100}%`}} />
+  </div>
+  <div className="stat-bar armor">
+    <span className="label">Armor</span>
+    <span className="value">{armor}</span>
+  </div>
+</div>
+```
+
+**Implementation Requirements:**
+1. Position stats prominently (top or side of screen)
+2. Use large, readable fonts
+3. Color-coded bars (red for HP, blue for stamina, gray for armor)
+4. Visual warnings when low (pulsing/flashing when HP < 3 or stamina < 5)
+5. Show both current and maximum values
+6. Mobile-responsive sizing
+
+### Issue 4: Uneven Fighter Panels for Spectators
+**Problem:** Spectator view shows fighter panels with uneven/funny sizing.
+
+**Solution:** Implement symmetric layout for spectator view:
+```css
+/* Spectator fighter panels */
+.spectator-view {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  height: 100%;
+}
+
+.fighter-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border: 2px solid #333;
+  padding: 10px;
+}
+
+.fighter-panel .stats { flex: 0 0 auto; }
+.fighter-panel .cards { flex: 1 1 auto; }
+.fighter-panel .actions { flex: 0 0 auto; }
+```
+
+**Implementation Requirements:**
+1. Use CSS Grid for even 50/50 split
+2. Ensure both panels have identical structure
+3. Match heights regardless of content
+4. Center the VS indicator between panels
+5. Show mirrored layouts (Player 1 on left, Player 2 on right)
+6. Scale card displays to fit available space
+
+**Visual Layout for Spectators:**
+```
++----------------+  VS  +----------------+
+|  Fighter 1     |      |     Fighter 2  |
+|  HP: 8/10      |      |      HP: 5/10  |
+|  Stam: 15/24   |      |    Stam: 8/24  |
+|  Armor: 2      |      |      Armor: 0  |
+|                |      |                |
+|  [Card Cards]  |      |  [Card Cards]  |
+|                |      |                |
+|  Status: Ready |      | Status: Picking |
++----------------+      +----------------+
+```
+
 **IMPORTANT:** These are blocking issues that prevent proper gameplay. Fix these before implementing any new features.
 
 ## Future Roadmap
